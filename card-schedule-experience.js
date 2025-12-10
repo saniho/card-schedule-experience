@@ -68,7 +68,7 @@ function defineCard(LitElement, html, css) {
 
     render() {
       if (!this.hass) {
-        return html``; // Attendre que HASS soit disponible
+        return html``;
       }
       const days = [{id:1,l:'Lundi'},{id:2,l:'Mardi'},{id:3,l:'Mercredi'},{id:4,l:'Jeudi'},{id:5,l:'Vendredi'},{id:6,l:'Samedi'},{id:0,l:'Dimanche'}];
       return html`
@@ -101,8 +101,8 @@ function defineCard(LitElement, html, css) {
     
     _renderCondition(scenario, rule, cond, index) {
       return html`<div class="condition-row">
-        <ha-entity-picker .hass=${this.hass} .value=${cond.entity} @value-changed=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.detail.value })} allow-custom-entity></ha-entity-picker>
-        <ha-select class="operator-select" .value=${cond.operator} @selected=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<mwc-list-item .value=${o.value}>${o.label}</mwc-list-item>`)}</ha-select>
+        <ha-entity-picker .hass=${this.hass} .value=${cond.entity} .label="Entité" @value-changed=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.detail.value })} allow-custom-entity></ha-entity-picker>
+        <ha-select class="operator-select" .value=${cond.operator} .label="Op." @selected=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<mwc-list-item .value=${o.value}>${o.label}</mwc-list-item>`)}</ha-select>
         <ha-textfield class="value-input" label="Valeur" .value=${cond.value} @change=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}></ha-textfield>
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteCondition(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
@@ -110,7 +110,7 @@ function defineCard(LitElement, html, css) {
 
     _renderAction(scenario, rule, act, index) {
       return html`<div class="action-row">
-        <ha-entity-picker .hass=${this.hass} .value=${act.entity} @value-changed=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.detail.value })} allow-custom-entity></ha-entity-picker>
+        <ha-entity-picker .hass=${this.hass} .value=${act.entity} .label="Entité" @value-changed=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.detail.value })} allow-custom-entity></ha-entity-picker>
         <ha-textfield label="Valeur" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}></ha-textfield>
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteAction(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
@@ -145,7 +145,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.15 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.16 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
