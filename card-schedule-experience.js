@@ -11,7 +11,7 @@ function defineCard(LitElement, html, css) {
         _draggedSlot: { state: true },
         _dragOffset: { state: true },
         _previewSlot: { state: true },
-        _resizeTooltip: { state: true }, // Pour l'infobulle de redimensionnement
+        _resizeTooltip: { state: true },
       };
     }
 
@@ -24,7 +24,6 @@ function defineCard(LitElement, html, css) {
       this._previewSlot = null;
       this._resizeTooltip = null;
 
-      // Données par défaut corrigées pour éviter toute ambiguïté de chevauchement
       this._timeslots = [
         { id: '1', name: 'Chauffage matin', day: 1, startTime: '07:00', endTime: '09:00', scenarioId: '1', enabled: true, color: '#3b82f6' },
         { id: '2', name: 'Eco journée', day: 1, startTime: '09:01', endTime: '17:59', scenarioId: '2', enabled: true, color: '#10b981' },
@@ -36,16 +35,9 @@ function defineCard(LitElement, html, css) {
       ];
     }
 
-    // --- Lovelace Card Interface ---
-    setConfig(config) {
-      this._config = config;
-    }
+    setConfig(config) { this._config = config; }
+    getCardSize() { return 15; }
 
-    getCardSize() {
-      return 15;
-    }
-
-    // --- Logique de la carte ---
     timeToMinutes(time) {
       const [hours, minutes] = time.split(':').map(Number);
       return hours * 60 + minutes;
@@ -66,19 +58,14 @@ function defineCard(LitElement, html, css) {
     }
 
     checkConflict(targetSlot) {
-      if (this.timeToMinutes(targetSlot.startTime) >= this.timeToMinutes(targetSlot.endTime)) {
-        return { name: "Durée nulle ou négative" };
-      }
+      if (this.timeToMinutes(targetSlot.startTime) >= this.timeToMinutes(targetSlot.endTime)) return { name: "Durée nulle ou négative" };
       const slotsInDay = this._timeslots.filter(s => s.day === targetSlot.day && s.id !== targetSlot.id);
       const targetStart = this.timeToMinutes(targetSlot.startTime);
       const targetEnd = this.timeToMinutes(targetSlot.endTime);
-
       for (const existingSlot of slotsInDay) {
         const existingStart = this.timeToMinutes(existingSlot.startTime);
         const existingEnd = this.timeToMinutes(existingSlot.endTime);
-        if (targetStart < existingEnd && targetEnd > existingStart) {
-          return existingSlot;
-        }
+        if (targetStart < existingEnd && targetEnd > existingStart) return existingSlot;
       }
       return null;
     }
@@ -94,7 +81,6 @@ function defineCard(LitElement, html, css) {
         enabled: true,
         color: this._scenarios[0]?.color || '#3b82f6'
       };
-
       this._timeslots = [...this._timeslots, newSlot];
       this._editingSlot = newSlot.id;
       this.requestUpdate();
@@ -122,131 +108,95 @@ function defineCard(LitElement, html, css) {
       this.requestUpdate();
     }
 
-    // --- Fonctions de Drag & Drop ---
     _handleDragStart(e, slot) {
       if (e.target.closest('.resize-handle')) return;
       e.stopPropagation();
-
       const timeline = e.currentTarget.parentElement;
       const timelineRect = timeline.getBoundingClientRect();
       const slotStartPercent = this.timeToPercent(slot.startTime);
       const clickPercent = ((e.clientX - timelineRect.left) / timelineRect.width) * 100;
-      
       this._draggedSlot = slot;
       this._dragOffset = clickPercent - slotStartPercent;
       this._editingSlot = null;
       this.requestUpdate();
-
       const handleMouseMove = (moveEvent) => {
         if (!this._draggedSlot) return;
-
         const x = moveEvent.clientX - timelineRect.left;
         let newStartPercent = ((x / timelineRect.width) * 100) - this._dragOffset;
         newStartPercent = Math.max(0, newStartPercent);
-
         const durationPercent = this.timeToPercent(slot.endTime) - this.timeToPercent(slot.startTime);
-        if (newStartPercent + durationPercent > 100) {
-          newStartPercent = 100 - durationPercent;
-        }
-
+        if (newStartPercent + durationPercent > 100) newStartPercent = 100 - durationPercent;
         const newStartTime = this.percentToTime(newStartPercent);
         const newEndTime = this.percentToTime(newStartPercent + durationPercent);
-        
         const proposedSlot = { ...slot, startTime: newStartTime, endTime: newEndTime };
-        if (!this.checkConflict(proposedSlot)) {
-          this.updateTimeslot(slot.id, { startTime: newStartTime, endTime: newEndTime });
-        }
+        if (!this.checkConflict(proposedSlot)) this.updateTimeslot(slot.id, { startTime: newStartTime, endTime: newEndTime });
       };
-
       const handleMouseUp = () => {
         this._draggedSlot = null;
         this.requestUpdate();
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
       };
-
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }
 
     _handleResizeStart(e, slot, handle) {
-        e.stopPropagation();
-        const timeline = e.currentTarget.closest('.timeline-bar');
-        const timelineRect = timeline.getBoundingClientRect();
-
-        this._resizeTooltip = { content: handle === 'left' ? slot.startTime : slot.endTime, top: e.clientY, left: e.clientX };
+      e.stopPropagation();
+      const timeline = e.currentTarget.closest('.timeline-bar');
+      const timelineRect = timeline.getBoundingClientRect();
+      this._resizeTooltip = { content: handle === 'left' ? slot.startTime : slot.endTime, top: e.clientY, left: e.clientX };
+      this.requestUpdate();
+      const handleMouseMove = (moveEvent) => {
+        const x = moveEvent.clientX - timelineRect.left;
+        const percent = Math.max(0, Math.min(100, (x / timelineRect.width) * 100));
+        const newTime = this.percentToTime(percent);
+        this._resizeTooltip = { content: newTime, top: moveEvent.clientY, left: moveEvent.clientX };
         this.requestUpdate();
-
-        const handleMouseMove = (moveEvent) => {
-            const x = moveEvent.clientX - timelineRect.left;
-            const percent = Math.max(0, Math.min(100, (x / timelineRect.width) * 100));
-            const newTime = this.percentToTime(percent);
-
-            this._resizeTooltip = { content: newTime, top: moveEvent.clientY, left: moveEvent.clientX };
-            this.requestUpdate();
-
-            if (handle === 'left') {
-                if (this.timeToMinutes(newTime) < this.timeToMinutes(slot.endTime)) {
-                    const proposedSlot = { ...slot, startTime: newTime };
-                    if (!this.checkConflict(proposedSlot)) {
-                        this.updateTimeslot(slot.id, { startTime: newTime });
-                    }
-                }
-            } else { // right
-                if (this.timeToMinutes(newTime) > this.timeToMinutes(slot.startTime)) {
-                    const proposedSlot = { ...slot, endTime: newTime };
-                    if (!this.checkConflict(proposedSlot)) {
-                        this.updateTimeslot(slot.id, { endTime: newTime });
-                    }
-                }
-            }
-        };
-
-        const handleMouseUp = () => {
-            this._resizeTooltip = null;
-            this.requestUpdate();
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
+        if (handle === 'left') {
+          if (this.timeToMinutes(newTime) < this.timeToMinutes(slot.endTime)) {
+            const proposedSlot = { ...slot, startTime: newTime };
+            if (!this.checkConflict(proposedSlot)) this.updateTimeslot(slot.id, { startTime: newTime });
+          }
+        } else {
+          if (this.timeToMinutes(newTime) > this.timeToMinutes(slot.startTime)) {
+            const proposedSlot = { ...slot, endTime: newTime };
+            if (!this.checkConflict(proposedSlot)) this.updateTimeslot(slot.id, { endTime: newTime });
+          }
+        }
+      };
+      const handleMouseUp = () => {
+        this._resizeTooltip = null;
+        this.requestUpdate();
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
     }
 
     _handleTimelineMouseDown(e, dayId) {
       if (e.target.closest('.time-slot')) return;
-
       const timeline = e.currentTarget;
       const timelineRect = timeline.getBoundingClientRect();
       const startPercent = ((e.clientX - timelineRect.left) / timelineRect.width) * 100;
-
-      this._previewSlot = {
-        day: dayId,
-        startTime: this.percentToTime(startPercent),
-        endTime: this.percentToTime(startPercent),
-        id: 'preview'
-      };
+      this._previewSlot = { day: dayId, startTime: this.percentToTime(startPercent), endTime: this.percentToTime(startPercent), id: 'preview' };
       this.requestUpdate();
-
       const handleMouseMove = (moveEvent) => {
         const x = moveEvent.clientX - timelineRect.left;
         const currentPercent = Math.max(0, Math.min(100, (x / timelineRect.width) * 100));
         const finalStartPercent = Math.min(startPercent, currentPercent);
         const finalEndPercent = Math.max(startPercent, currentPercent);
-
         this._previewSlot.startTime = this.percentToTime(finalStartPercent);
         this._previewSlot.endTime = this.percentToTime(finalEndPercent);
         this.requestUpdate();
       };
-
       const handleMouseUp = () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
-
         const finalSlot = { ...this._previewSlot };
         this._previewSlot = null;
         this.requestUpdate();
-
         if (this.timeToMinutes(finalSlot.endTime) - this.timeToMinutes(finalSlot.startTime) < 5) return;
         if (this.checkConflict(finalSlot)) {
           console.warn("Impossible de créer le créneau: chevauchement détecté.");
@@ -254,18 +204,15 @@ function defineCard(LitElement, html, css) {
         }
         this.addTimeslot(finalSlot.day, finalSlot.startTime, finalSlot.endTime);
       };
-
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }
 
-    // --- Rendu ---
     render() {
       const daysOfWeek = [
-          { id: 1, label: 'Lundi' }, { id: 2, label: 'Mardi' }, { id: 3, label: 'Mercredi' },
-          { id: 4, label: 'Jeudi' }, { id: 5, label: 'Vendredi' }, { id: 6, label: 'Samedi' }, { id: 0, label: 'Dimanche' }
+        { id: 1, label: 'Lundi' }, { id: 2, label: 'Mardi' }, { id: 3, label: 'Mercredi' },
+        { id: 4, label: 'Jeudi' }, { id: 5, label: 'Vendredi' }, { id: 6, label: 'Samedi' }, { id: 0, label: 'Dimanche' }
       ];
-
       return html`
         <ha-card>
           <div class="header">
@@ -275,27 +222,20 @@ function defineCard(LitElement, html, css) {
               <div class="card-description">Configuration des plages horaires et scénarios</div>
             </div>
           </div>
-
           <div class="tab-bar">
             <div class="tab ${this._activeTab === 'timeslots' ? 'active' : ''}" @click=${() => { this._activeTab = 'timeslots'; this.requestUpdate(); }}>Planification</div>
             <div class="tab ${this._activeTab === 'scenarios' ? 'active' : ''}" @click=${() => { this._activeTab = 'scenarios'; this.requestUpdate(); }}>Scénarios</div>
           </div>
-
           <div class="content">
             ${this._activeTab === 'timeslots' ? this._renderTimeslots(daysOfWeek) : this._renderScenarios()}
           </div>
         </ha-card>
-        ${this._resizeTooltip ? html`
-          <div class="resize-tooltip" style="top: ${this._resizeTooltip.top}px; left: ${this._resizeTooltip.left}px;">
-            ${this._resizeTooltip.content}
-          </div>
-        ` : ''}
+        ${this._resizeTooltip ? html`<div class="resize-tooltip" style="top: ${this._resizeTooltip.top}px; left: ${this._resizeTooltip.left}px;">${this._resizeTooltip.content}</div>` : ''}
       `;
     }
 
     _renderTimeslots(daysOfWeek) {
       const getSlotsForDay = (dayId) => this._timeslots.filter(slot => slot.day === dayId).sort((a, b) => a.startTime.localeCompare(b.startTime));
-      
       return html`
         <div class="timeline-header">
           <div class="day-label-spacer"></div>
@@ -314,37 +254,21 @@ function defineCard(LitElement, html, css) {
               <div class="day-label">${day.label}</div>
               <div class="timeline-bar" @mousedown=${(e) => this._handleTimelineMouseDown(e, day.id)}>
                 ${[6, 12, 18].map(h => html`<div class="grid-line" style="left: ${h/24*100}%"></div>`)}
-                
                 ${getSlotsForDay(day.id).map(slot => {
                   const startPercent = this.timeToPercent(slot.startTime);
                   const widthPercent = this.timeToPercent(slot.endTime) - startPercent;
-                  const isDragging = this._draggedSlot?.id === slot.id;
-
                   return html`
-                    <div
-                      class="time-slot ${isDragging ? 'dragging' : ''}"
-                      style="left: ${startPercent}%; width: ${widthPercent}%; background-color: ${slot.color};"
-                      @mousedown=${(e) => this._handleDragStart(e, slot)}
-                      @click=${() => { if (!this._draggedSlot) { this._editingSlot = slot.id; this.requestUpdate(); } }}
-                    >
+                    <div class="time-slot ${this._draggedSlot?.id === slot.id ? 'dragging' : ''}" style="left: ${startPercent}%; width: ${widthPercent}%; background-color: ${slot.color};" @mousedown=${(e) => this._handleDragStart(e, slot)} @click=${() => { if (!this._draggedSlot) { this._editingSlot = slot.id; this.requestUpdate(); } }}>
                       <div class="resize-handle left" @mousedown=${(e) => this._handleResizeStart(e, slot, 'left')}></div>
                       <div class="slot-content">
                         <span class="slot-name">${slot.name}</span>
-                        <ha-icon-button class="delete-btn" .label="Supprimer" @click=${(e) => { e.stopPropagation(); this.deleteTimeslot(slot.id); }}>
-                            <ha-icon icon="hass:trash-can-outline"></ha-icon>
-                        </ha-icon-button>
+                        <ha-icon-button class="delete-btn" .label="Supprimer" @click=${(e) => { e.stopPropagation(); this.deleteTimeslot(slot.id); }}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button>
                       </div>
                       <div class="resize-handle right" @mousedown=${(e) => this._handleResizeStart(e, slot, 'right')}></div>
                     </div>
                   `;
                 })}
-                
-                ${this._previewSlot && this._previewSlot.day === day.id ? html`
-                  <div
-                    class="time-slot preview"
-                    style="left: ${this.timeToPercent(this._previewSlot.startTime)}%; width: ${this.timeToPercent(this._previewSlot.endTime) - this.timeToPercent(this._previewSlot.startTime)}%;"
-                  ></div>
-                ` : ''}
+                ${this._previewSlot && this._previewSlot.day === day.id ? html`<div class="time-slot preview" style="left: ${this.timeToPercent(this._previewSlot.startTime)}%; width: ${this.timeToPercent(this._previewSlot.endTime) - this.timeToPercent(this._previewSlot.startTime)}%;"></div>` : ''}
               </div>
             </div>
           `)}
@@ -356,23 +280,29 @@ function defineCard(LitElement, html, css) {
     _renderEditPanel() {
       const slot = this._timeslots.find(s => s.id === this._editingSlot);
       if (!slot) return '';
-
       const handleTimeChange = (e, field) => {
-          const proposedSlot = { ...slot, [field]: e.target.value };
-          const conflict = this.checkConflict(proposedSlot);
-          if (conflict) {
-              alert(`Conflit d'horaire détecté avec ${conflict.name}.`);
-              e.target.value = slot[field];
-          } else {
-              this.updateTimeslot(slot.id, { [field]: e.target.value });
-          }
+        const proposedSlot = { ...slot, [field]: e.target.value };
+        const conflict = this.checkConflict(proposedSlot);
+        if (conflict) {
+          alert(`Conflit d'horaire détecté avec ${conflict.name}.`);
+          e.target.value = slot[field];
+        } else {
+          this.updateTimeslot(slot.id, { [field]: e.target.value });
+        }
       };
-
+      const handleDelete = () => {
+        if (confirm(`Êtes-vous sûr de vouloir supprimer le créneau "${slot.name}" ?`)) {
+          this.deleteTimeslot(slot.id);
+        }
+      };
       return html`
         <div class="edit-panel">
           <div class="edit-header">
             <h3>Édition de la plage</h3>
-            <ha-icon-button .label="Fermer" @click=${() => { this._editingSlot = null; this.requestUpdate(); }}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
+            <div class="header-buttons">
+              <ha-icon-button class="delete-btn-panel" .label="Supprimer" @click=${handleDelete}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button>
+              <ha-icon-button .label="Fermer" @click=${() => { this._editingSlot = null; this.requestUpdate(); }}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
+            </div>
           </div>
           <div class="edit-content">
             <ha-textfield label="Heure de début" type="time" .value=${slot.startTime} @change=${(e) => handleTimeChange(e, 'startTime')}></ha-textfield>
@@ -389,7 +319,6 @@ function defineCard(LitElement, html, css) {
       return html`<div class="scenarios-container"><p>La configuration des scénarios n'est pas encore implémentée dans cette version.</p></div>`;
     }
 
-    // --- Styles ---
     static get styles() {
       return css`
         :host { display: block; }
@@ -422,7 +351,9 @@ function defineCard(LitElement, html, css) {
         .resize-handle.right { right: 0; }
         .edit-panel { margin-top: 16px; background-color: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 8px; padding: 16px; }
         .edit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .edit-header h3 { margin: 0; font-size: 16px; }
+        .edit-header h3 { margin: 0; font-size: 16px; flex-grow: 1; }
+        .header-buttons { display: flex; align-items: center; }
+        .delete-btn-panel { --mdc-theme-primary: var(--error-color); }
         .edit-content { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         ha-select { grid-column: 1 / -1; }
         .resize-tooltip { position: fixed; transform: translate(-50%, -120%); background-color: var(--primary-text-color, black); color: var(--text-primary-color, white); padding: 4px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; z-index: 1000; pointer-events: none; }
@@ -451,7 +382,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.5 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.6 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
