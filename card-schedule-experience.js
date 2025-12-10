@@ -145,7 +145,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.14 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.15 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
