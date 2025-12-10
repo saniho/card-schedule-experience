@@ -10,6 +10,7 @@ function defineCard(LitElement, html, css) {
         _editingSlot: { state: true },
         _draggedSlot: { state: true },
         _dragOffset: { state: true },
+        _previewSlot: { state: true }, // Pour l'aperçu du nouveau créneau
       };
     }
 
@@ -19,6 +20,7 @@ function defineCard(LitElement, html, css) {
       this._editingSlot = null;
       this._draggedSlot = null;
       this._dragOffset = 0;
+      this._previewSlot = null;
 
       // Données par défaut
       this._timeslots = [
@@ -79,23 +81,19 @@ function defineCard(LitElement, html, css) {
       return null;
     }
 
-    addTimeslot(day) {
+    addTimeslot(day, startTime = '08:00', endTime = '12:00') {
       const newSlot = {
         id: Date.now().toString(),
         name: 'Nouveau',
         day: day,
-        startTime: '08:00',
-        endTime: '12:00',
+        startTime: startTime,
+        endTime: endTime,
         scenarioId: this._scenarios[0]?.id || '',
         enabled: true,
         color: this._scenarios[0]?.color || '#3b82f6'
       };
 
-      if (this.checkConflict(newSlot)) {
-        alert("Impossible d'ajouter : Conflit d'horaire détecté.");
-        return;
-      }
-
+      // La vérification de conflit est faite avant d'appeler cette fonction maintenant
       this._timeslots = [...this._timeslots, newSlot];
       this._editingSlot = newSlot.id;
       this.requestUpdate();
@@ -206,6 +204,68 @@ function defineCard(LitElement, html, css) {
         document.addEventListener('mouseup', handleMouseUp);
     }
 
+    // NOUVELLE FONCTION: Gérer la création d'un créneau par sélection
+    _handleTimelineMouseDown(e, dayId) {
+      // Si on clique sur un créneau existant ou une poignée, ne rien faire.
+      if (e.target.closest('.time-slot')) {
+        return;
+      }
+
+      const timeline = e.currentTarget;
+      const timelineRect = timeline.getBoundingClientRect();
+      const startPercent = ((e.clientX - timelineRect.left) / timelineRect.width) * 100;
+
+      // Créer un aperçu de créneau
+      this._previewSlot = {
+        day: dayId,
+        startTime: this.percentToTime(startPercent),
+        endTime: this.percentToTime(startPercent),
+        color: 'rgba(59, 130, 246, 0.5)', // Bleu semi-transparent
+        id: 'preview'
+      };
+      this.requestUpdate();
+
+      const handleMouseMove = (moveEvent) => {
+        const x = moveEvent.clientX - timelineRect.left;
+        const currentPercent = Math.max(0, Math.min(100, (x / timelineRect.width) * 100));
+
+        // Gérer le glisser vers la gauche ou la droite
+        const finalStartPercent = Math.min(startPercent, currentPercent);
+        const finalEndPercent = Math.max(startPercent, currentPercent);
+
+        this._previewSlot.startTime = this.percentToTime(finalStartPercent);
+        this._previewSlot.endTime = this.percentToTime(finalEndPercent);
+        this.requestUpdate();
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+
+        const finalSlot = { ...this._previewSlot };
+        this._previewSlot = null; // Cacher l'aperçu
+        this.requestUpdate();
+
+        // Ignorer les clics ou les glissés trop courts (moins de 5 minutes)
+        if (this.timeToMinutes(finalSlot.endTime) - this.timeToMinutes(finalSlot.startTime) < 5) {
+          return;
+        }
+
+        // Vérifier le conflit AVANT de créer le créneau
+        if (this.checkConflict(finalSlot)) {
+          console.warn("Impossible de créer le créneau: chevauchement détecté.");
+          // On pourrait afficher une notification ici
+          return;
+        }
+
+        // Si tout est bon, ajouter le nouveau créneau
+        this.addTimeslot(finalSlot.day, finalSlot.startTime, finalSlot.endTime);
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
     // --- Rendu ---
     render() {
       const daysOfWeek = [
@@ -261,7 +321,7 @@ function defineCard(LitElement, html, css) {
           ${daysOfWeek.map(day => html`
             <div class="day-row">
               <div class="day-label">${day.label}</div>
-              <div class="timeline-bar">
+              <div class="timeline-bar" @mousedown=${(e) => this._handleTimelineMouseDown(e, day.id)}>
                 <!-- Grid lines -->
                 ${[6, 12, 18].map(h => html`<div class="grid-line" style="left: ${h/24*100}%"></div>`)}
                 
@@ -289,9 +349,14 @@ function defineCard(LitElement, html, css) {
                     </div>
                   `;
                 })}
-                 <ha-icon-button class="add-btn" .label="Ajouter" @click=${() => this.addTimeslot(day.id)}>
-                    <ha-icon icon="hass:plus"></ha-icon>
-                 </ha-icon-button>
+                
+                <!-- Aperçu du nouveau créneau -->
+                ${this._previewSlot && this._previewSlot.day === day.id ? html`
+                  <div
+                    class="time-slot preview"
+                    style="left: ${this.timeToPercent(this._previewSlot.startTime)}%; width: ${this.timeToPercent(this._previewSlot.endTime) - this.timeToPercent(this._previewSlot.startTime)}%;"
+                  ></div>
+                ` : ''}
               </div>
             </div>
           `)}
@@ -376,15 +441,15 @@ function defineCard(LitElement, html, css) {
         .days-container { display: flex; flex-direction: column; gap: 12px; }
         .day-row { display: flex; align-items: center; gap: 8px; }
         .day-label { width: 80px; flex-shrink: 0; font-weight: 500; text-align: right; padding-right: 8px; }
-        .timeline-bar { flex-grow: 1; position: relative; height: 48px; background-color: var(--secondary-background-color); border-radius: 8px; border: 1px solid var(--divider-color); }
+        .timeline-bar { flex-grow: 1; position: relative; height: 48px; background-color: var(--secondary-background-color); border-radius: 8px; border: 1px solid var(--divider-color); cursor: crosshair; }
         .grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background-color: var(--divider-color); }
         .time-slot { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; cursor: move; display: flex; align-items: center; justify-content: space-between; overflow: hidden; transition: opacity 0.2s; min-width: 60px; }
         .time-slot.dragging { opacity: 0.7; z-index: 10; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .time-slot.preview { background-color: rgba(59, 130, 246, 0.5); border: 1px dashed var(--primary-color); z-index: 1; cursor: default; }
         .slot-content { padding: 0 8px; color: white; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
         .delete-btn { --mdc-icon-button-size: 24px; --mdc-icon-size: 16px; color: white; opacity: 0; transition: opacity 0.2s; pointer-events: auto; }
         .time-slot:hover .delete-btn { opacity: 0.8; }
         .delete-btn:hover { opacity: 1; }
-        .add-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); --mdc-icon-button-size: 32px; background-color: var(--primary-color); color: var(--text-primary-color); border-radius: 50%; }
         .resize-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 5; }
         .resize-handle.left { left: 0; }
         .resize-handle.right { right: 0; }
@@ -418,7 +483,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.1.2 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.4 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
