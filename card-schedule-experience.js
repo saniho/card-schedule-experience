@@ -108,14 +108,14 @@ function defineCard(LitElement, html, css) {
         const domain = cond.entity.split('.')[0];
         if (domain === 'input_select') {
           const options = entityState.attributes.options || [];
-          valueInput = html`<ha-select .label="Valeur" .value=${cond.value} @selected=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}>
-            ${options.map(opt => html`<mwc-list-item .value=${opt}>${opt}</mwc-list-item>`)}
-          </ha-select>`;
+          valueInput = html`<select class="value-input" .value=${cond.value} @change=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}>
+            ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
+          </select>`;
         } else if (domain === 'input_boolean' || domain === 'switch') {
-          valueInput = html`<ha-select .label="Valeur" .value=${cond.value} @selected=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}>
-            <mwc-list-item value="on">Allumé</mwc-list-item>
-            <mwc-list-item value="off">Éteint</mwc-list-item>
-          </ha-select>`;
+          valueInput = html`<select class="value-input" .value=${cond.value} @change=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}>
+            <option value="on">Allumé</option>
+            <option value="off">Éteint</option>
+          </select>`;
         }
       }
       
@@ -124,10 +124,11 @@ function defineCard(LitElement, html, css) {
       }
 
       return html`<div class="condition-row">
-        <ha-select .label="Entité" .value=${cond.entity} @selected=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.target.value, value: '' })} @closed=${(e) => e.stopPropagation()}>
-          ${entities.map(entity => html`<mwc-list-item .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</mwc-list-item>`)}
-        </ha-select>
-        <ha-select class="operator-select" .value=${cond.operator} .label="Op." @selected=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<mwc-list-item .value=${o.value}>${o.label}</mwc-list-item>`)}</ha-select>
+        <select class="entity-select" .value=${cond.entity} @change=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.target.value, value: '' })}>
+          <option value="" disabled selected>Choisir une entité</option>
+          ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
+        </select>
+        <select class="operator-select" .value=${cond.operator} @change=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<option .value=${o.value}>${o.label}</option>`)}</select>
         ${valueInput}
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteCondition(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
@@ -142,15 +143,15 @@ function defineCard(LitElement, html, css) {
         const domain = act.entity.split('.')[0];
         if (domain === 'input_select') {
           const options = entityState.attributes.options || [];
-          valueInput = html`<ha-select .label="Définir sur" .value=${act.value} @selected=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}>
-            ${options.map(opt => html`<mwc-list-item .value=${opt}>${opt}</mwc-list-item>`)}
-          </ha-select>`;
+          valueInput = html`<select class="value-input" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}>
+            ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
+          </select>`;
         } else if (domain === 'input_boolean' || domain === 'switch' || domain === 'light') {
-          valueInput = html`<ha-select .label="Action" .value=${act.value} @selected=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}>
-            <mwc-list-item value="on">Allumer</mwc-list-item>
-            <mwc-list-item value="off">Éteindre</mwc-list-item>
-            <mwc-list-item value="toggle">Bascule</mwc-list-item>
-          </ha-select>`;
+          valueInput = html`<select class="value-input" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}>
+            <option value="on">Allumer</option>
+            <option value="off">Éteindre</option>
+            <option value="toggle">Bascule</option>
+          </select>`;
         }
       }
 
@@ -159,9 +160,10 @@ function defineCard(LitElement, html, css) {
       }
 
       return html`<div class="action-row">
-        <ha-select .label="Entité" .value=${act.entity} @selected=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.target.value, value: '' })} @closed=${(e) => e.stopPropagation()}>
-          ${entities.map(entity => html`<mwc-list-item .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</mwc-list-item>`)}
-        </ha-select>
+        <select class="entity-select" .value=${act.entity} @change=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.target.value, value: '' })}>
+          <option value="" disabled selected>Choisir une entité</option>
+          ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
+        </select>
         ${valueInput}
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteAction(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
@@ -170,7 +172,7 @@ function defineCard(LitElement, html, css) {
     static get styles() {
       return css`
         :host{display:block}ha-card{overflow:hidden;position:relative}.header{display:flex;align-items:center;gap:16px;background:var(--primary-color);color:var(--text-primary-color,#fff);padding:16px}.icon-container ha-icon{--mdc-icon-size:28px}.card-name{font-size:22px;font-weight:700}.card-description{font-size:14px;opacity:.9}.tab-bar{display:flex;border-bottom:1px solid var(--divider-color)}.tab{padding:12px 16px;cursor:pointer;font-weight:500;color:var(--secondary-text-color);position:relative}.tab.active{color:var(--primary-color)}.tab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--primary-color)}.content{padding:16px}.timeline-header{display:flex;align-items:center;margin-bottom:8px;padding-right:10px}.day-label-spacer{width:80px;flex-shrink:0}.hours-container{flex-grow:1;position:relative;height:1em;font-size:12px;color:var(--secondary-text-color)}.days-container{display:flex;flex-direction:column;gap:12px}.day-row{display:flex;align-items:center;gap:8px}.day-label{width:80px;flex-shrink:0;font-weight:500;text-align:right;padding-right:8px}.timeline-bar{flex-grow:1;position:relative;height:48px;background-color:var(--secondary-background-color);border-radius:8px;border:1px solid var(--divider-color);cursor:crosshair}.grid-line{position:absolute;top:0;bottom:0;width:1px;background-color:var(--divider-color)}.time-slot{position:absolute;top:4px;bottom:4px;border-radius:6px;cursor:move;display:flex;align-items:center;justify-content:space-between;overflow:hidden;transition:opacity .2s}.time-slot.dragging{opacity:.7;z-index:10;box-shadow:0 4px 8px #0003}.time-slot.preview{background-color:#3b82f680;border:1px dashed var(--primary-color);z-index:1;cursor:default}.slot-content{padding:0 8px;color:#fff;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:flex;justify-content:space-between;align-items:center;pointer-events:none}.delete-btn{--mdc-icon-button-size:24px;--mdc-icon-size:16px;color:#fff;opacity:.7;transition:opacity .2s;pointer-events:auto}.delete-btn:hover{opacity:1}.resize-handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:5}.resize-handle.left{left:0}.resize-handle.right{right:0}.edit-panel{margin-top:16px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:16px}.edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.edit-header h3{margin:0;font-size:16px;flex-grow:1}.header-buttons{display:flex;align-items:center}.delete-btn-panel{--mdc-theme-primary:var(--error-color)}.edit-content{display:grid;grid-template-columns:1fr 1fr;gap:12px}ha-select{grid-column:1 / -1}.resize-tooltip{position:fixed;transform:translate(-50%,-120%);background-color:var(--primary-text-color,#000);color:var(--text-primary-color,#fff);padding:4px 8px;border-radius:4px;font-size:14px;font-weight:700;z-index:1000;pointer-events:none}
-        .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.rule-card{background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;margin-top:12px}.rule-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background-color:var(--primary-background-color);border-bottom:1px solid var(--divider-color);font-weight:700}.rule-content{padding:12px;display:flex;flex-direction:column;gap:8px}.conditions,.actions{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--divider-color);margin-left:8px;padding-top:8px}.add-icon-button-wrapper{margin-top:8px}.condition-row,.action-row{display:flex;align-items:center;gap:8px}.condition-row > :first-child, .action-row > :first-child {flex:1}.condition-row > .operator-select{flex:0 0 60px;}.condition-row > .value-input, .action-row > :nth-child(2){flex:1}
+        .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.rule-card{background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;margin-top:12px}.rule-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background-color:var(--primary-background-color);border-bottom:1px solid var(--divider-color);font-weight:700}.rule-content{padding:12px;display:flex;flex-direction:column;gap:8px}.conditions,.actions{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--divider-color);margin-left:8px;padding-top:8px}.add-icon-button-wrapper{margin-top:8px}.condition-row,.action-row{display:flex;align-items:center;gap:8px}.condition-row > .entity-select, .action-row > .entity-select {flex:1}.condition-row > .operator-select{flex:none;width:80px;}.condition-row > .value-input, .action-row > .value-input {flex:1} select, ha-textfield { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--input-fill-color); color: var(--primary-text-color); font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box; height: 40px; }
       `;
     }
   }
@@ -197,7 +199,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.20 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.21 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
