@@ -109,7 +109,7 @@ function defineCard(LitElement, html, css) {
       const state = entityState.state;
       const attributes = entityState.attributes || {};
 
-      // input_select - toujours un dropdown
+      // input_select - dropdown avec options
       if (domain === 'input_select') {
         const options = attributes.options || [];
         return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
@@ -118,17 +118,17 @@ function defineCard(LitElement, html, css) {
         </select>`;
       }
 
-      // input_boolean - toujours on/off
-      if (domain === 'input_boolean') {
+      // select - nouvelle entité native Home Assistant avec options
+      if (domain === 'select') {
+        const options = attributes.options || [];
         return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-          <option value="">-- Choisir --</option>
-          <option value="true">Vrai</option>
-          <option value="false">Faux</option>
+          <option value="">-- Choisir une valeur --</option>
+          ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
         </select>`;
       }
 
-      // switch, light - on/off
-      if (domain === 'switch' || domain === 'light') {
+      // input_boolean - booléen vrai/faux
+      if (domain === 'input_boolean') {
         return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
           <option value="">-- Choisir --</option>
           <option value="on">Allumé</option>
@@ -136,24 +136,67 @@ function defineCard(LitElement, html, css) {
         </select>`;
       }
 
-      // number - toujours numérique avec min/max/step
-      if (domain === 'number') {
-        const min = attributes.min;
-        const max = attributes.max;
-        const step = attributes.step || 1;
-        const unit = attributes.unit_of_measurement ? ` ${attributes.unit_of_measurement}` : '';
-        return html`<ha-textfield class="value-input" label="Valeur${unit}" type="number" .value=${currentValue} ?step=${step} ?min=${min} ?max=${max} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      // switch - on/off
+      if (domain === 'switch') {
+        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+          <option value="">-- Choisir --</option>
+          <option value="on">Allumer</option>
+          <option value="off">Éteindre</option>
+        </select>`;
       }
 
-      // climate - toujours numérique (température)
+      // light - on/off
+      if (domain === 'light') {
+        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+          <option value="">-- Choisir --</option>
+          <option value="on">Allumer</option>
+          <option value="off">Éteindre</option>
+        </select>`;
+      }
+
+      // climate - hvac_modes pour choisir le mode
       if (domain === 'climate') {
+        const hvacModes = attributes.hvac_modes || [];
+        // Si on a les modes HVAC, afficher un dropdown
+        if (hvacModes.length > 0) {
+          return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+            <option value="">-- Choisir un mode --</option>
+            ${hvacModes.map(mode => html`<option .value=${mode}>${mode}</option>`)}
+          </select>`;
+        }
+        // Sinon champ numérique pour la température
         const minTemp = attributes.min_temp;
         const maxTemp = attributes.max_temp;
         const unit = attributes.unit_of_measurement || '°C';
         return html`<ha-textfield class="value-input" label="Température ${unit}" type="number" .value=${currentValue} .min=${minTemp} .max=${maxTemp} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
       }
 
-      // sensor - déterminer le type basé sur l'état
+      // fan - fan_modes si disponible
+      if (domain === 'fan') {
+        const fanModes = attributes.fan_modes || [];
+        if (fanModes.length > 0) {
+          return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+            <option value="">-- Choisir un mode --</option>
+            ${fanModes.map(mode => html`<option .value=${mode}>${mode}</option>`)}
+          </select>`;
+        }
+      }
+
+      // cover - position (0-100)
+      if (domain === 'cover') {
+        return html`<ha-textfield class="value-input" label="Position (%)" type="number" .value=${currentValue} min="0" max="100" @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      }
+
+      // number - numérique avec min/max/step
+      if (domain === 'number') {
+        const min = attributes.min;
+        const max = attributes.max;
+        const step = attributes.step || 1;
+        const unit = attributes.unit_of_measurement ? ` ${attributes.unit_of_measurement}` : '';
+        return html`<ha-textfield class="value-input" label="Valeur${unit}" type="number" .value=${currentValue} step="${step}" min="${min}" max="${max}" @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      }
+
+      // sensor - déterminer le type basé sur l'état et les attributs
       if (domain === 'sensor') {
         // Vérifier si c'est un nombre
         const isNumeric = !isNaN(state) && state !== '' && state !== 'unknown' && state !== 'unavailable';
