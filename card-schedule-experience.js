@@ -99,29 +99,47 @@ function defineCard(LitElement, html, css) {
     _renderScenarioDetails(scenario) { return html`<div class="scenario-details"><ha-textfield label="Nom du scénario" .value=${scenario.name} @change=${e => this._updateScenario(scenario.id, { name: e.target.value })}></ha-textfield><div class="color-picker"><span>Couleur</span><input type="color" .value=${scenario.color} @input=${e => this._updateScenario(scenario.id, { color: e.target.value })} /></div><ha-icon-button class="delete-btn-panel" label="Supprimer Scénario" @click=${() => this._deleteScenario(scenario.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div>`; }
     _renderRule(scenario, rule) { return html`<div class="rule-card"><div class="rule-header"><span>Règle</span><ha-icon-button class="delete-btn-panel" label="Supprimer Règle" @click=${() => this._deleteRule(scenario.id, rule.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="rule-content"><strong>SI</strong><div class="conditions">${rule.conditions.map((cond, i) => this._renderCondition(scenario, rule, cond, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter condition" @click=${() => this._addCondition(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div><strong>ALORS</strong><div class="actions">${rule.actions.map((act, i) => this._renderAction(scenario, rule, act, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter action" @click=${() => this._addAction(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div></div></div>`; }
     
+    _getValueInputForEntity(entity, currentValue, updateCallback) {
+      const entityState = this.hass.states[entity];
+      if (!entityState) {
+        return html`<ha-textfield class="value-input" label="Valeur" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      }
+
+      const domain = entity.split('.')[0];
+      const state = entityState.state;
+      const attributes = entityState.attributes || {};
+
+      // input_select
+      if (domain === 'input_select') {
+        const options = attributes.options || [];
+        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+          <option value="">-- Choisir une valeur --</option>
+          ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
+        </select>`;
+      }
+
+      // input_boolean, switch, light
+      if (domain === 'input_boolean' || domain === 'switch' || domain === 'light') {
+        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+          <option value="">-- Choisir --</option>
+          <option value="on">Allumé</option>
+          <option value="off">Éteint</option>
+        </select>`;
+      }
+
+      // Détection de type numérique pour les capteurs
+      const isNumeric = !isNaN(state) && state !== '';
+      if (domain === 'sensor' || domain === 'number' || isNumeric) {
+        const unit = attributes.unit_of_measurement || '';
+        return html`<ha-textfield class="value-input" label="Valeur ${unit}" type="number" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      }
+
+      // Fallback: champ texte
+      return html`<ha-textfield class="value-input" label="Valeur" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+    }
+
     _renderCondition(scenario, rule, cond, index) {
       const entities = Object.keys(this.hass.states).sort();
-      const entityState = this.hass.states[cond.entity];
-      let valueInput;
-
-      if (entityState) {
-        const domain = cond.entity.split('.')[0];
-        if (domain === 'input_select') {
-          const options = entityState.attributes.options || [];
-          valueInput = html`<select class="value-input" .value=${cond.value} @change=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}>
-            ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
-          </select>`;
-        } else if (domain === 'input_boolean' || domain === 'switch') {
-          valueInput = html`<select class="value-input" .value=${cond.value} @change=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}>
-            <option value="on">Allumé</option>
-            <option value="off">Éteint</option>
-          </select>`;
-        }
-      }
-      
-      if (!valueInput) {
-        valueInput = html`<ha-textfield class="value-input" label="Valeur" .value=${cond.value} @change=${e => this._updateCondition(scenario.id, rule.id, index, { value: e.target.value })}></ha-textfield>`;
-      }
 
       return html`<div class="condition-row">
         <select class="entity-select" .value=${cond.entity} @change=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.target.value, value: '' })}>
@@ -129,42 +147,20 @@ function defineCard(LitElement, html, css) {
           ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
         </select>
         <select class="operator-select" .value=${cond.operator} @change=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<option .value=${o.value}>${o.label}</option>`)}</select>
-        ${valueInput}
+        ${cond.entity ? this._getValueInputForEntity(cond.entity, cond.value, (updates) => this._updateCondition(scenario.id, rule.id, index, updates)) : html`<input class="value-input" disabled placeholder="Sélectionnez une entité d'abord" />`}
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteCondition(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
     }
 
     _renderAction(scenario, rule, act, index) {
       const entities = Object.keys(this.hass.states).sort();
-      const entityState = this.hass.states[act.entity];
-      let valueInput;
-
-      if (entityState) {
-        const domain = act.entity.split('.')[0];
-        if (domain === 'input_select') {
-          const options = entityState.attributes.options || [];
-          valueInput = html`<select class="value-input" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}>
-            ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
-          </select>`;
-        } else if (domain === 'input_boolean' || domain === 'switch' || domain === 'light') {
-          valueInput = html`<select class="value-input" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}>
-            <option value="on">Allumer</option>
-            <option value="off">Éteindre</option>
-            <option value="toggle">Bascule</option>
-          </select>`;
-        }
-      }
-
-      if (!valueInput) {
-        valueInput = html`<ha-textfield label="Valeur" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}></ha-textfield>`;
-      }
 
       return html`<div class="action-row">
         <select class="entity-select" .value=${act.entity} @change=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.target.value, value: '' })}>
           <option value="" disabled selected>Choisir une entité</option>
           ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
         </select>
-        ${valueInput}
+        ${act.entity ? this._getValueInputForEntity(act.entity, act.value, (updates) => this._updateAction(scenario.id, rule.id, index, updates)) : html`<input class="value-input" disabled placeholder="Sélectionnez une entité d'abord" />`}
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteAction(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
     }
