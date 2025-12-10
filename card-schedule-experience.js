@@ -2,7 +2,7 @@ function defineCard(LitElement, html, css) {
   class CardScheduleExperience extends LitElement {
     static get properties() {
       return {
-        hass: {},
+        hass: { type: Object },
         _config: { state: true },
         _activeTab: { state: true },
         _timeslots: { state: true },
@@ -66,7 +66,30 @@ function defineCard(LitElement, html, css) {
     _handleResizeStart(e, slot, handle) { e.stopPropagation(); const tl = e.currentTarget.closest('.timeline-bar'), rect = tl.getBoundingClientRect(); this._resizeTooltip = { content: handle === 'left' ? slot.startTime : slot.endTime, top: e.clientY, left: e.clientX }; this.requestUpdate(); const mm = (me) => { const x = me.clientX - rect.left, p = Math.max(0, Math.min(100, (x / rect.width) * 100)), nt = this.percentToTime(p); this._resizeTooltip = { content: nt, top: me.clientY, left: me.clientX }; this.requestUpdate(); if (handle === 'left') { if (this.timeToMinutes(nt) < this.timeToMinutes(slot.endTime) && !this.checkConflict({ ...slot, startTime: nt })) this.updateTimeslot(slot.id, { startTime: nt }); } else { if (this.timeToMinutes(nt) > this.timeToMinutes(slot.startTime) && !this.checkConflict({ ...slot, endTime: nt })) this.updateTimeslot(slot.id, { endTime: nt }); } }; const mu = () => { this._resizeTooltip = null; this.requestUpdate(); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); }
     _handleTimelineMouseDown(e, dayId) { if (e.target.closest('.time-slot')) return; const tl = e.currentTarget, rect = tl.getBoundingClientRect(), sp = ((e.clientX - rect.left) / rect.width) * 100; this._previewSlot = { day: dayId, startTime: this.percentToTime(sp), endTime: this.percentToTime(sp), id: 'preview' }; this.requestUpdate(); const mm = (me) => { const x = me.clientX - rect.left, cp = Math.max(0, Math.min(100, (x / rect.width) * 100)); this._previewSlot.startTime = this.percentToTime(Math.min(sp, cp)); this._previewSlot.endTime = this.percentToTime(Math.max(sp, cp)); this.requestUpdate(); }; const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); const fs = { ...this._previewSlot }; this._previewSlot = null; this.requestUpdate(); if (this.timeToMinutes(fs.endTime) - this.timeToMinutes(fs.startTime) < 5 || this.checkConflict(fs)) return; this.addTimeslot(fs.day, fs.startTime, fs.endTime); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); }
 
-    render() { const days = [{id:1,l:'Lundi'},{id:2,l:'Mardi'},{id:3,l:'Mercredi'},{id:4,l:'Jeudi'},{id:5,l:'Vendredi'},{id:6,l:'Samedi'},{id:0,l:'Dimanche'}]; return html`<ha-card><div class="header"><div class="icon-container"><ha-icon icon="hass:clock-outline"></ha-icon></div><div class="info-container"><div class="card-name">Scheduler Component</div><div class="card-description">Conf. plages horaires & scénarios</div></div></div><div class="tab-bar"><div class="tab ${this._activeTab==='timeslots'?'active':''}" @click=${()=>this._activeTab='timeslots'}>Planification</div><div class="tab ${this._activeTab==='scenarios'?'active':''}" @click=${()=>this._activeTab='scenarios'}>Scénarios</div></div><div class="content">${this._activeTab==='timeslots'?this._renderTimeslots(days):this._renderScenarios()}</div></ha-card>${this._resizeTooltip?html`<div class="resize-tooltip" style="top:${this._resizeTooltip.top}px;left:${this._resizeTooltip.left}px;">${this._resizeTooltip.content}</div>`:''}`; }
+    render() {
+      if (!this.hass) {
+        return html``; // Attendre que HASS soit disponible
+      }
+      const days = [{id:1,l:'Lundi'},{id:2,l:'Mardi'},{id:3,l:'Mercredi'},{id:4,l:'Jeudi'},{id:5,l:'Vendredi'},{id:6,l:'Samedi'},{id:0,l:'Dimanche'}];
+      return html`
+        <ha-card>
+          <div class="header">
+            <div class="icon-container"><ha-icon icon="hass:clock-outline"></ha-icon></div>
+            <div class="info-container">
+              <div class="card-name">Scheduler Component</div>
+              <div class="card-description">Conf. plages horaires & scénarios</div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab ${this._activeTab==='timeslots'?'active':''}" @click=${()=>this._activeTab='timeslots'}>Planification</div>
+            <div class="tab ${this._activeTab==='scenarios'?'active':''}" @click=${()=>this._activeTab='scenarios'}>Scénarios</div>
+          </div>
+          <div class="content">${this._activeTab==='timeslots'?this._renderTimeslots(days):this._renderScenarios()}</div>
+        </ha-card>
+        ${this._resizeTooltip?html`<div class="resize-tooltip" style="top:${this._resizeTooltip.top}px;left:${this._resizeTooltip.left}px;">${this._resizeTooltip.content}</div>`:''}
+      `;
+    }
+
     _renderTimeslots(days) { const slots = (d) => this._timeslots.filter(s => s.day === d).sort((a, b) => a.startTime.localeCompare(b.startTime)); return html`<div class="timeline-header"><div class="day-label-spacer"></div><div class="hours-container">${[0,6,12,18,24].map(h=>html`<span style="position:absolute;left:${(h/24)*100}%;transform:translateX(${h>0&&h<24?'-50%':h===24?'-100%':'0'});">${String(h===24?'24':h).padStart(2,'0')}:00</span>`)}</div></div><div class="days-container">${days.map(d=>html`<div class="day-row"><div class="day-label">${d.l}</div><div class="timeline-bar" @mousedown=${(e)=>this._handleTimelineMouseDown(e,d.id)}>${[6,12,18].map(h=>html`<div class="grid-line" style="left:${h/24*100}%"></div>`)}${slots(d.id).map(s=>html`<div class="time-slot ${this._draggedSlot?.id===s.id?'dragging':''}" style="left:${this.timeToPercent(s.startTime)}%;width:${this.timeToPercent(s.endTime)-this.timeToPercent(s.startTime)}%;background-color:${s.color};" @mousedown=${(e)=>this._handleDragStart(e,s)} @click=${()=>{if(!this._draggedSlot)this._editingSlot=s.id}}><div class="resize-handle left" @mousedown=${(e)=>this._handleResizeStart(e,s,'left')}></div><div class="slot-content"><span class="slot-name">${s.name}</span><ha-icon-button class="delete-btn" .label="Supprimer" @click=${(e)=>{e.stopPropagation();this.deleteTimeslot(s.id)}}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="resize-handle right" @mousedown=${(e)=>this._handleResizeStart(e,s,'right')}></div></div>`)}${this._previewSlot&&this._previewSlot.day===d.id?html`<div class="time-slot preview" style="left:${this.timeToPercent(this._previewSlot.startTime)}%;width:${this.timeToPercent(this._previewSlot.endTime)-this.timeToPercent(this._previewSlot.startTime)}%;"></div>`:''}</div></div>`)}</div>${this._editingSlot?this._renderEditPanel():''}`; }
     _renderEditPanel() { const s = this._timeslots.find(sl => sl.id === this._editingSlot); if (!s) return ''; const htc = (e, f) => { const ps = { ...s, [f]: e.target.value }; if (this.checkConflict(ps)) { alert(`Conflit avec ${this.checkConflict(ps).name}.`); e.target.value = s[f]; } else this.updateTimeslot(s.id, { [f]: e.target.value }); }; const hd = () => { if (confirm(`Supprimer "${s.name}" ?`)) this.deleteTimeslot(s.id); }; return html`<div class="edit-panel"><div class="edit-header"><h3>Édition de la plage</h3><div class="header-buttons"><ha-icon-button class="delete-btn-panel" .label="Supprimer" @click=${hd}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button><ha-icon-button .label="Fermer" @click=${()=>this._editingSlot=null}><ha-icon icon="hass:close"></ha-icon></ha-icon-button></div></div><div class="edit-content"><ha-textfield label="Début" type="time" .value=${s.startTime} @change=${(e)=>htc(e,'startTime')}></ha-textfield><ha-textfield label="Fin" type="time" .value=${s.endTime} @change=${(e)=>htc(e,'endTime')}></ha-textfield><ha-select label="Scénario" .value=${s.scenarioId} @selected=${(e)=>this.updateTimeslot(s.id,{scenarioId:e.target.value})}>${this._scenarios.map(sc=>html`<mwc-list-item .value=${sc.id}>${sc.name}</mwc-list-item>`)}</ha-select></div></div>`; }
     
@@ -77,7 +100,6 @@ function defineCard(LitElement, html, css) {
     _renderRule(scenario, rule) { return html`<div class="rule-card"><div class="rule-header"><span>Règle</span><ha-icon-button class="delete-btn-panel" label="Supprimer Règle" @click=${() => this._deleteRule(scenario.id, rule.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="rule-content"><strong>SI</strong><div class="conditions">${rule.conditions.map((cond, i) => this._renderCondition(scenario, rule, cond, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter condition" @click=${() => this._addCondition(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div><strong>ALORS</strong><div class="actions">${rule.actions.map((act, i) => this._renderAction(scenario, rule, act, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter action" @click=${() => this._addAction(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div></div></div>`; }
     
     _renderCondition(scenario, rule, cond, index) {
-      if (!this.hass) return html`<div>Chargement des entités...</div>`;
       return html`<div class="condition-row">
         <ha-entity-picker .hass=${this.hass} .value=${cond.entity} @value-changed=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.detail.value })} allow-custom-entity></ha-entity-picker>
         <ha-select class="operator-select" .value=${cond.operator} @selected=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<mwc-list-item .value=${o.value}>${o.label}</mwc-list-item>`)}</ha-select>
@@ -87,7 +109,6 @@ function defineCard(LitElement, html, css) {
     }
 
     _renderAction(scenario, rule, act, index) {
-      if (!this.hass) return html``;
       return html`<div class="action-row">
         <ha-entity-picker .hass=${this.hass} .value=${act.entity} @value-changed=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.detail.value })} allow-custom-entity></ha-entity-picker>
         <ha-textfield label="Valeur" .value=${act.value} @change=${e => this._updateAction(scenario.id, rule.id, index, { value: e.target.value })}></ha-textfield>
