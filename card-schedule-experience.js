@@ -10,7 +10,8 @@ function defineCard(LitElement, html, css) {
         _editingSlot: { state: true },
         _draggedSlot: { state: true },
         _dragOffset: { state: true },
-        _previewSlot: { state: true }, // Pour l'aperçu du nouveau créneau
+        _previewSlot: { state: true },
+        _resizeTooltip: { state: true }, // Pour l'infobulle de redimensionnement
       };
     }
 
@@ -21,11 +22,12 @@ function defineCard(LitElement, html, css) {
       this._draggedSlot = null;
       this._dragOffset = 0;
       this._previewSlot = null;
+      this._resizeTooltip = null;
 
-      // Données par défaut
+      // Données par défaut corrigées pour éviter toute ambiguïté de chevauchement
       this._timeslots = [
         { id: '1', name: 'Chauffage matin', day: 1, startTime: '07:00', endTime: '09:00', scenarioId: '1', enabled: true, color: '#3b82f6' },
-        { id: '2', name: 'Eco journée', day: 1, startTime: '09:00', endTime: '18:00', scenarioId: '2', enabled: true, color: '#10b981' },
+        { id: '2', name: 'Eco journée', day: 1, startTime: '09:01', endTime: '17:59', scenarioId: '2', enabled: true, color: '#10b981' },
         { id: '3', name: 'Chauffage soir', day: 1, startTime: '18:00', endTime: '23:00', scenarioId: '1', enabled: true, color: '#3b82f6' }
       ];
       this._scenarios = [
@@ -93,7 +95,6 @@ function defineCard(LitElement, html, css) {
         color: this._scenarios[0]?.color || '#3b82f6'
       };
 
-      // La vérification de conflit est faite avant d'appeler cette fonction maintenant
       this._timeslots = [...this._timeslots, newSlot];
       this._editingSlot = newSlot.id;
       this.requestUpdate();
@@ -173,20 +174,26 @@ function defineCard(LitElement, html, css) {
         const timeline = e.currentTarget.closest('.timeline-bar');
         const timelineRect = timeline.getBoundingClientRect();
 
+        this._resizeTooltip = { content: handle === 'left' ? slot.startTime : slot.endTime, top: e.clientY, left: e.clientX };
+        this.requestUpdate();
+
         const handleMouseMove = (moveEvent) => {
             const x = moveEvent.clientX - timelineRect.left;
             const percent = Math.max(0, Math.min(100, (x / timelineRect.width) * 100));
             const newTime = this.percentToTime(percent);
 
+            this._resizeTooltip = { content: newTime, top: moveEvent.clientY, left: moveEvent.clientX };
+            this.requestUpdate();
+
             if (handle === 'left') {
-                if (newTime < slot.endTime) {
+                if (this.timeToMinutes(newTime) < this.timeToMinutes(slot.endTime)) {
                     const proposedSlot = { ...slot, startTime: newTime };
                     if (!this.checkConflict(proposedSlot)) {
                         this.updateTimeslot(slot.id, { startTime: newTime });
                     }
                 }
             } else { // right
-                if (newTime > slot.startTime) {
+                if (this.timeToMinutes(newTime) > this.timeToMinutes(slot.startTime)) {
                     const proposedSlot = { ...slot, endTime: newTime };
                     if (!this.checkConflict(proposedSlot)) {
                         this.updateTimeslot(slot.id, { endTime: newTime });
@@ -196,6 +203,8 @@ function defineCard(LitElement, html, css) {
         };
 
         const handleMouseUp = () => {
+            this._resizeTooltip = null;
+            this.requestUpdate();
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
@@ -204,23 +213,17 @@ function defineCard(LitElement, html, css) {
         document.addEventListener('mouseup', handleMouseUp);
     }
 
-    // NOUVELLE FONCTION: Gérer la création d'un créneau par sélection
     _handleTimelineMouseDown(e, dayId) {
-      // Si on clique sur un créneau existant ou une poignée, ne rien faire.
-      if (e.target.closest('.time-slot')) {
-        return;
-      }
+      if (e.target.closest('.time-slot')) return;
 
       const timeline = e.currentTarget;
       const timelineRect = timeline.getBoundingClientRect();
       const startPercent = ((e.clientX - timelineRect.left) / timelineRect.width) * 100;
 
-      // Créer un aperçu de créneau
       this._previewSlot = {
         day: dayId,
         startTime: this.percentToTime(startPercent),
         endTime: this.percentToTime(startPercent),
-        color: 'rgba(59, 130, 246, 0.5)', // Bleu semi-transparent
         id: 'preview'
       };
       this.requestUpdate();
@@ -228,8 +231,6 @@ function defineCard(LitElement, html, css) {
       const handleMouseMove = (moveEvent) => {
         const x = moveEvent.clientX - timelineRect.left;
         const currentPercent = Math.max(0, Math.min(100, (x / timelineRect.width) * 100));
-
-        // Gérer le glisser vers la gauche ou la droite
         const finalStartPercent = Math.min(startPercent, currentPercent);
         const finalEndPercent = Math.max(startPercent, currentPercent);
 
@@ -243,22 +244,14 @@ function defineCard(LitElement, html, css) {
         document.removeEventListener('mouseup', handleMouseUp);
 
         const finalSlot = { ...this._previewSlot };
-        this._previewSlot = null; // Cacher l'aperçu
+        this._previewSlot = null;
         this.requestUpdate();
 
-        // Ignorer les clics ou les glissés trop courts (moins de 5 minutes)
-        if (this.timeToMinutes(finalSlot.endTime) - this.timeToMinutes(finalSlot.startTime) < 5) {
-          return;
-        }
-
-        // Vérifier le conflit AVANT de créer le créneau
+        if (this.timeToMinutes(finalSlot.endTime) - this.timeToMinutes(finalSlot.startTime) < 5) return;
         if (this.checkConflict(finalSlot)) {
           console.warn("Impossible de créer le créneau: chevauchement détecté.");
-          // On pourrait afficher une notification ici
           return;
         }
-
-        // Si tout est bon, ajouter le nouveau créneau
         this.addTimeslot(finalSlot.day, finalSlot.startTime, finalSlot.endTime);
       };
 
@@ -276,9 +269,7 @@ function defineCard(LitElement, html, css) {
       return html`
         <ha-card>
           <div class="header">
-            <div class="icon-container">
-              <ha-icon icon="hass:clock-outline"></ha-icon>
-            </div>
+            <div class="icon-container"><ha-icon icon="hass:clock-outline"></ha-icon></div>
             <div class="info-container">
               <div class="card-name">Scheduler Component</div>
               <div class="card-description">Configuration des plages horaires et scénarios</div>
@@ -286,24 +277,19 @@ function defineCard(LitElement, html, css) {
           </div>
 
           <div class="tab-bar">
-            <div
-              class="tab ${this._activeTab === 'timeslots' ? 'active' : ''}"
-              @click=${() => { this._activeTab = 'timeslots'; this.requestUpdate(); }}
-            >
-              Planification
-            </div>
-            <div
-              class="tab ${this._activeTab === 'scenarios' ? 'active' : ''}"
-              @click=${() => { this._activeTab = 'scenarios'; this.requestUpdate(); }}
-            >
-              Scénarios
-            </div>
+            <div class="tab ${this._activeTab === 'timeslots' ? 'active' : ''}" @click=${() => { this._activeTab = 'timeslots'; this.requestUpdate(); }}>Planification</div>
+            <div class="tab ${this._activeTab === 'scenarios' ? 'active' : ''}" @click=${() => { this._activeTab = 'scenarios'; this.requestUpdate(); }}>Scénarios</div>
           </div>
 
           <div class="content">
             ${this._activeTab === 'timeslots' ? this._renderTimeslots(daysOfWeek) : this._renderScenarios()}
           </div>
         </ha-card>
+        ${this._resizeTooltip ? html`
+          <div class="resize-tooltip" style="top: ${this._resizeTooltip.top}px; left: ${this._resizeTooltip.left}px;">
+            ${this._resizeTooltip.content}
+          </div>
+        ` : ''}
       `;
     }
 
@@ -314,7 +300,12 @@ function defineCard(LitElement, html, css) {
         <div class="timeline-header">
           <div class="day-label-spacer"></div>
           <div class="hours-container">
-            ${[0, 6, 12, 18, 24].map(h => html`<span>${String(h).padStart(2, '0')}:00</span>`)}
+            ${[0, 6, 12, 18, 24].map(h => {
+              let style = `left: ${(h/24)*100}%;`;
+              if (h > 0 && h < 24) style += 'transform: translateX(-50%);';
+              else if (h === 24) style += 'transform: translateX(-100%);';
+              return html`<span style="position: absolute; ${style}">${String(h === 24 ? '24' : h).padStart(2, '0')}:00</span>`;
+            })}
           </div>
         </div>
         <div class="days-container">
@@ -322,10 +313,8 @@ function defineCard(LitElement, html, css) {
             <div class="day-row">
               <div class="day-label">${day.label}</div>
               <div class="timeline-bar" @mousedown=${(e) => this._handleTimelineMouseDown(e, day.id)}>
-                <!-- Grid lines -->
                 ${[6, 12, 18].map(h => html`<div class="grid-line" style="left: ${h/24*100}%"></div>`)}
                 
-                <!-- Slots -->
                 ${getSlotsForDay(day.id).map(slot => {
                   const startPercent = this.timeToPercent(slot.startTime);
                   const widthPercent = this.timeToPercent(slot.endTime) - startPercent;
@@ -350,7 +339,6 @@ function defineCard(LitElement, html, css) {
                   `;
                 })}
                 
-                <!-- Aperçu du nouveau créneau -->
                 ${this._previewSlot && this._previewSlot.day === day.id ? html`
                   <div
                     class="time-slot preview"
@@ -374,7 +362,7 @@ function defineCard(LitElement, html, css) {
           const conflict = this.checkConflict(proposedSlot);
           if (conflict) {
               alert(`Conflit d'horaire détecté avec ${conflict.name}.`);
-              e.target.value = slot[field]; // Revert
+              e.target.value = slot[field];
           } else {
               this.updateTimeslot(slot.id, { [field]: e.target.value });
           }
@@ -384,28 +372,12 @@ function defineCard(LitElement, html, css) {
         <div class="edit-panel">
           <div class="edit-header">
             <h3>Édition de la plage</h3>
-            <ha-icon-button .label="Fermer" @click=${() => { this._editingSlot = null; this.requestUpdate(); }}>
-              <ha-icon icon="hass:close"></ha-icon>
-            </ha-icon-button>
+            <ha-icon-button .label="Fermer" @click=${() => { this._editingSlot = null; this.requestUpdate(); }}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
           </div>
           <div class="edit-content">
-            <ha-textfield
-              label="Heure de début"
-              type="time"
-              .value=${slot.startTime}
-              @change=${(e) => handleTimeChange(e, 'startTime')}
-            ></ha-textfield>
-            <ha-textfield
-              label="Heure de fin"
-              type="time"
-              .value=${slot.endTime}
-              @change=${(e) => handleTimeChange(e, 'endTime')}
-            ></ha-textfield>
-            <ha-select
-              label="Scénario"
-              .value=${slot.scenarioId}
-              @selected=${(e) => this.updateTimeslot(slot.id, { scenarioId: e.target.value })}
-            >
+            <ha-textfield label="Heure de début" type="time" .value=${slot.startTime} @change=${(e) => handleTimeChange(e, 'startTime')}></ha-textfield>
+            <ha-textfield label="Heure de fin" type="time" .value=${slot.endTime} @change=${(e) => handleTimeChange(e, 'endTime')}></ha-textfield>
+            <ha-select label="Scénario" .value=${slot.scenarioId} @selected=${(e) => this.updateTimeslot(slot.id, { scenarioId: e.target.value })}>
               ${this._scenarios.map(sc => html`<mwc-list-item .value=${sc.id}>${sc.name}</mwc-list-item>`)}
             </ha-select>
           </div>
@@ -414,18 +386,14 @@ function defineCard(LitElement, html, css) {
     }
 
     _renderScenarios() {
-      return html`
-        <div class="scenarios-container">
-          <p>La configuration des scénarios n'est pas encore implémentée dans cette version.</p>
-        </div>
-      `;
+      return html`<div class="scenarios-container"><p>La configuration des scénarios n'est pas encore implémentée dans cette version.</p></div>`;
     }
 
     // --- Styles ---
     static get styles() {
       return css`
         :host { display: block; }
-        ha-card { overflow: hidden; }
+        ha-card { overflow: hidden; position: relative; }
         .header { display: flex; align-items: center; gap: 16px; background: var(--primary-color); color: var(--text-primary-color, white); padding: 16px; }
         .icon-container ha-icon { --mdc-icon-size: 28px; }
         .card-name { font-size: 22px; font-weight: bold; }
@@ -435,20 +403,19 @@ function defineCard(LitElement, html, css) {
         .tab.active { color: var(--primary-color); }
         .tab.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--primary-color); }
         .content { padding: 16px; }
-        .timeline-header { display: flex; align-items: center; margin-bottom: 8px; padding-right: 30px; }
+        .timeline-header { display: flex; align-items: center; margin-bottom: 8px; padding-right: 10px; }
         .day-label-spacer { width: 80px; flex-shrink: 0; }
-        .hours-container { flex-grow: 1; display: flex; justify-content: space-between; font-size: 12px; color: var(--secondary-text-color); }
+        .hours-container { flex-grow: 1; position: relative; height: 1em; font-size: 12px; color: var(--secondary-text-color); }
         .days-container { display: flex; flex-direction: column; gap: 12px; }
         .day-row { display: flex; align-items: center; gap: 8px; }
         .day-label { width: 80px; flex-shrink: 0; font-weight: 500; text-align: right; padding-right: 8px; }
         .timeline-bar { flex-grow: 1; position: relative; height: 48px; background-color: var(--secondary-background-color); border-radius: 8px; border: 1px solid var(--divider-color); cursor: crosshair; }
         .grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background-color: var(--divider-color); }
-        .time-slot { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; cursor: move; display: flex; align-items: center; justify-content: space-between; overflow: hidden; transition: opacity 0.2s; min-width: 60px; }
+        .time-slot { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; cursor: move; display: flex; align-items: center; justify-content: space-between; overflow: hidden; transition: opacity 0.2s; }
         .time-slot.dragging { opacity: 0.7; z-index: 10; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         .time-slot.preview { background-color: rgba(59, 130, 246, 0.5); border: 1px dashed var(--primary-color); z-index: 1; cursor: default; }
         .slot-content { padding: 0 8px; color: white; font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
-        .delete-btn { --mdc-icon-button-size: 24px; --mdc-icon-size: 16px; color: white; opacity: 0; transition: opacity 0.2s; pointer-events: auto; }
-        .time-slot:hover .delete-btn { opacity: 0.8; }
+        .delete-btn { --mdc-icon-button-size: 24px; --mdc-icon-size: 16px; color: white; opacity: 0.7; transition: opacity 0.2s; pointer-events: auto; }
         .delete-btn:hover { opacity: 1; }
         .resize-handle { position: absolute; top: 0; bottom: 0; width: 8px; cursor: ew-resize; z-index: 5; }
         .resize-handle.left { left: 0; }
@@ -458,6 +425,7 @@ function defineCard(LitElement, html, css) {
         .edit-header h3 { margin: 0; font-size: 16px; }
         .edit-content { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         ha-select { grid-column: 1 / -1; }
+        .resize-tooltip { position: fixed; transform: translate(-50%, -120%); background-color: var(--primary-text-color, black); color: var(--text-primary-color, white); padding: 4px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; z-index: 1000; pointer-events: none; }
       `;
     }
   }
@@ -483,7 +451,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.4 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.5 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
