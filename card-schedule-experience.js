@@ -127,6 +127,8 @@ function defineCard(LitElement, html, css) {
 }
 
 async function loadCard() {
+  // Explicitly wait for ha-entity-picker to be defined by Home Assistant
+  await customElements.whenDefined('ha-entity-picker');
   try {
     const { LitElement, html, css } = await import('https://unpkg.com/lit@2.0.0/index.js?module');
     defineCard(LitElement, html, css);
@@ -145,7 +147,7 @@ window.customCards.push({
 });
 
 console.info(
-  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.16 `,
+  `%c CARD-SCHEDULE-EXPERIENCE %c v0.0.17 `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
