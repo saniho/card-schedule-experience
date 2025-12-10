@@ -109,7 +109,7 @@ function defineCard(LitElement, html, css) {
       const state = entityState.state;
       const attributes = entityState.attributes || {};
 
-      // input_select
+      // input_select - toujours un dropdown
       if (domain === 'input_select') {
         const options = attributes.options || [];
         return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
@@ -118,8 +118,17 @@ function defineCard(LitElement, html, css) {
         </select>`;
       }
 
-      // input_boolean, switch, light
-      if (domain === 'input_boolean' || domain === 'switch' || domain === 'light') {
+      // input_boolean - toujours on/off
+      if (domain === 'input_boolean') {
+        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+          <option value="">-- Choisir --</option>
+          <option value="true">Vrai</option>
+          <option value="false">Faux</option>
+        </select>`;
+      }
+
+      // switch, light - on/off
+      if (domain === 'switch' || domain === 'light') {
         return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
           <option value="">-- Choisir --</option>
           <option value="on">Allumé</option>
@@ -127,11 +136,41 @@ function defineCard(LitElement, html, css) {
         </select>`;
       }
 
-      // Détection de type numérique pour les capteurs
-      const isNumeric = !isNaN(state) && state !== '';
-      if (domain === 'sensor' || domain === 'number' || isNumeric) {
-        const unit = attributes.unit_of_measurement || '';
-        return html`<ha-textfield class="value-input" label="Valeur ${unit}" type="number" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      // number - toujours numérique avec min/max/step
+      if (domain === 'number') {
+        const min = attributes.min;
+        const max = attributes.max;
+        const step = attributes.step || 1;
+        const unit = attributes.unit_of_measurement ? ` ${attributes.unit_of_measurement}` : '';
+        return html`<ha-textfield class="value-input" label="Valeur${unit}" type="number" .value=${currentValue} ?step=${step} ?min=${min} ?max=${max} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      }
+
+      // climate - toujours numérique (température)
+      if (domain === 'climate') {
+        const minTemp = attributes.min_temp;
+        const maxTemp = attributes.max_temp;
+        const unit = attributes.unit_of_measurement || '°C';
+        return html`<ha-textfield class="value-input" label="Température ${unit}" type="number" .value=${currentValue} .min=${minTemp} .max=${maxTemp} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+      }
+
+      // sensor - déterminer le type basé sur l'état
+      if (domain === 'sensor') {
+        // Vérifier si c'est un nombre
+        const isNumeric = !isNaN(state) && state !== '' && state !== 'unknown' && state !== 'unavailable';
+        if (isNumeric) {
+          const unit = attributes.unit_of_measurement ? ` ${attributes.unit_of_measurement}` : '';
+          return html`<ha-textfield class="value-input" label="Valeur${unit}" type="number" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
+        }
+        // Vérifier si c'est un booléen (on/off, true/false)
+        if (state === 'on' || state === 'off' || state === 'true' || state === 'false') {
+          return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
+            <option value="">-- Choisir --</option>
+            <option value="on">Allumé</option>
+            <option value="off">Éteint</option>
+          </select>`;
+        }
+        // Sinon texte
+        return html`<ha-textfield class="value-input" label="Valeur" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
       }
 
       // Fallback: champ texte
