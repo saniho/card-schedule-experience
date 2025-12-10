@@ -224,7 +224,7 @@ function defineCard(LitElement, html, css) {
       const entities = Object.keys(this.hass.states).sort();
 
       return html`<div class="condition-row">
-        <select class="entity-select" .value=${cond.entity} @change=${e => this._updateCondition(scenario.id, rule.id, index, { entity: e.target.value, value: '' })}>
+        <select class="entity-select" .value=${cond.entity} @change=${e => { this._updateCondition(scenario.id, rule.id, index, { entity: e.target.value, value: '' }); setTimeout(() => this.requestUpdate(), 0); }}>
           <option value="" disabled selected>Choisir une entité</option>
           ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
         </select>
@@ -238,7 +238,7 @@ function defineCard(LitElement, html, css) {
       const entities = Object.keys(this.hass.states).sort();
 
       return html`<div class="action-row">
-        <select class="entity-select" .value=${act.entity} @change=${e => this._updateAction(scenario.id, rule.id, index, { entity: e.target.value, value: '' })}>
+        <select class="entity-select" .value=${act.entity} @change=${e => { this._updateAction(scenario.id, rule.id, index, { entity: e.target.value, value: '' }); setTimeout(() => this.requestUpdate(), 0); }}>
           <option value="" disabled selected>Choisir une entité</option>
           ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
         </select>
