@@ -13,6 +13,7 @@ function defineCard(LitElement, html, css) {
         _previewSlot: { state: true },
         _resizeTooltip: { state: true },
         _editingScenarioId: { state: true },
+        _addingActionDialog: { state: true },
       };
     }
 
@@ -25,6 +26,7 @@ function defineCard(LitElement, html, css) {
       this._previewSlot = null;
       this._resizeTooltip = null;
       this._editingScenarioId = null;
+      this._addingActionDialog = null;
 
       this.operators = [ { value: '<', label: '<' }, { value: '<=', label: '≤' }, { value: '=', label: '=' }, { value: '>=', label: '≥' }, { value: '>', label: '>' } ];
       
@@ -62,6 +64,52 @@ function defineCard(LitElement, html, css) {
     _deleteAction(scenarioId, ruleId, index) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, actions: r.actions.filter((_, i) => i !== index) } : r) } : s); this.requestUpdate(); }
     _updateAction(scenarioId, ruleId, index, updates) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, actions: r.actions.map((a, i) => i === index ? { ...a, ...updates } : a) } : a) } : s); this.requestUpdate(); }
 
+    _showAddActionDialog(scenarioId, ruleId) {
+      this._addingActionDialog = { scenarioId, ruleId, entity: '', actionType: 'call_service' };
+      this.requestUpdate();
+    }
+
+    _closeAddActionDialog() {
+      this._addingActionDialog = null;
+      this.requestUpdate();
+    }
+
+    _confirmAddAction() {
+      if (!this._addingActionDialog || !this._addingActionDialog.entity) {
+        alert('Veuillez sélectionner une entité');
+        return;
+      }
+
+      const { scenarioId, ruleId, entity, actionType } = this._addingActionDialog;
+      const entityState = this.hass.states[entity];
+      const domain = entity.split('.')[0];
+
+      // Créer l'action avec une valeur par défaut selon le type d'entité
+      let action = { entity, value: '' };
+
+      if (domain === 'input_select' || domain === 'select') {
+        action.value = entityState.attributes.options?.[0] || '';
+      } else if (domain === 'input_boolean' || domain === 'switch' || domain === 'light') {
+        action.value = 'on';
+      } else if (domain === 'number') {
+        action.value = entityState.attributes.min || '0';
+      } else if (domain === 'climate') {
+        action.value = entityState.attributes.min_temp || '20';
+      } else if (domain === 'cover') {
+        action.value = '50';
+      }
+
+      this._addAction(scenarioId, ruleId);
+
+      // Mettre à jour la dernière action avec les bonnes valeurs
+      const scenario = this._scenarios.find(s => s.id === scenarioId);
+      const rule = scenario.rules.find(r => r.id === ruleId);
+      const lastActionIndex = rule.actions.length - 1;
+      this._updateAction(scenarioId, ruleId, lastActionIndex, action);
+
+      this._closeAddActionDialog();
+    }
+
     _handleDragStart(e, slot) { if (e.target.closest('.resize-handle')) return; e.stopPropagation(); const tl = e.currentTarget.parentElement, rect = tl.getBoundingClientRect(); this._draggedSlot = slot; this._dragOffset = ((e.clientX - rect.left) / rect.width) * 100 - this.timeToPercent(slot.startTime); this._editingSlot = null; this.requestUpdate(); const mm = (me) => { if (!this._draggedSlot) return; let nsp = ((me.clientX - rect.left) / rect.width) * 100 - this._dragOffset; nsp = Math.max(0, nsp); const dur = this.timeToPercent(slot.endTime) - this.timeToPercent(slot.startTime); if (nsp + dur > 100) nsp = 100 - dur; const nst = this.percentToTime(nsp), net = this.percentToTime(nsp + dur); if (!this.checkConflict({ ...slot, startTime: nst, endTime: net })) this.updateTimeslot(slot.id, { startTime: nst, endTime: net }); }; const mu = () => { this._draggedSlot = null; this.requestUpdate(); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); }
     _handleResizeStart(e, slot, handle) { e.stopPropagation(); const tl = e.currentTarget.closest('.timeline-bar'), rect = tl.getBoundingClientRect(); this._resizeTooltip = { content: handle === 'left' ? slot.startTime : slot.endTime, top: e.clientY, left: e.clientX }; this.requestUpdate(); const mm = (me) => { const x = me.clientX - rect.left, p = Math.max(0, Math.min(100, (x / rect.width) * 100)), nt = this.percentToTime(p); this._resizeTooltip = { content: nt, top: me.clientY, left: me.clientX }; this.requestUpdate(); if (handle === 'left') { if (this.timeToMinutes(nt) < this.timeToMinutes(slot.endTime) && !this.checkConflict({ ...slot, startTime: nt })) this.updateTimeslot(slot.id, { startTime: nt }); } else { if (this.timeToMinutes(nt) > this.timeToMinutes(slot.startTime) && !this.checkConflict({ ...slot, endTime: nt })) this.updateTimeslot(slot.id, { endTime: nt }); } }; const mu = () => { this._resizeTooltip = null; this.requestUpdate(); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); }
     _handleTimelineMouseDown(e, dayId) { if (e.target.closest('.time-slot')) return; const tl = e.currentTarget, rect = tl.getBoundingClientRect(), sp = ((e.clientX - rect.left) / rect.width) * 100; this._previewSlot = { day: dayId, startTime: this.percentToTime(sp), endTime: this.percentToTime(sp), id: 'preview' }; this.requestUpdate(); const mm = (me) => { const x = me.clientX - rect.left, cp = Math.max(0, Math.min(100, (x / rect.width) * 100)); this._previewSlot.startTime = this.percentToTime(Math.min(sp, cp)); this._previewSlot.endTime = this.percentToTime(Math.max(sp, cp)); this.requestUpdate(); }; const mu = () => { document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); const fs = { ...this._previewSlot }; this._previewSlot = null; this.requestUpdate(); if (this.timeToMinutes(fs.endTime) - this.timeToMinutes(fs.startTime) < 5 || this.checkConflict(fs)) return; this.addTimeslot(fs.day, fs.startTime, fs.endTime); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); }
@@ -87,6 +135,7 @@ function defineCard(LitElement, html, css) {
           <div class="content">${this._activeTab==='timeslots'?this._renderTimeslots(days):this._renderScenarios()}</div>
         </ha-card>
         ${this._resizeTooltip?html`<div class="resize-tooltip" style="top:${this._resizeTooltip.top}px;left:${this._resizeTooltip.left}px;">${this._resizeTooltip.content}</div>`:''}
+        ${this._renderAddActionDialog()}
       `;
     }
 
@@ -97,8 +146,8 @@ function defineCard(LitElement, html, css) {
     _renderScenarioItem(scenario) { const isEditing = this._editingScenarioId === scenario.id; return html`<ha-card class="scenario-item" outlined> <div class="scenario-header" @click=${() => this._editingScenarioId = isEditing ? null : scenario.id}> <div class="scenario-color" style="background-color: ${scenario.color}"></div> <span class="scenario-name">${scenario.name}</span> <ha-icon-button .label=${isEditing ? 'Fermer' : 'Ouvrir'}><ha-icon icon=${isEditing ? 'hass:chevron-up' : 'hass:chevron-down'}></ha-icon></ha-icon-button> </div> ${isEditing ? this._renderScenarioEditor(scenario) : ''} </ha-card>`; }
     _renderScenarioEditor(scenario) { return html`<div class="scenario-editor">${this._renderScenarioDetails(scenario)}${scenario.rules.map(rule => this._renderRule(scenario, rule))}<div class="add-button-container"><ha-button outlined label="Ajouter une règle" @click=${() => this._addRule(scenario.id)}><ha-icon slot="icon" icon="hass:plus-circle-outline"></ha-icon></ha-button></div></div>`; }
     _renderScenarioDetails(scenario) { return html`<div class="scenario-details"><ha-textfield label="Nom du scénario" .value=${scenario.name} @change=${e => this._updateScenario(scenario.id, { name: e.target.value })}></ha-textfield><div class="color-picker"><span>Couleur</span><input type="color" .value=${scenario.color} @input=${e => this._updateScenario(scenario.id, { color: e.target.value })} /></div><ha-icon-button class="delete-btn-panel" label="Supprimer Scénario" @click=${() => this._deleteScenario(scenario.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div>`; }
-    _renderRule(scenario, rule) { return html`<div class="rule-card"><div class="rule-header"><span>Règle</span><ha-icon-button class="delete-btn-panel" label="Supprimer Règle" @click=${() => this._deleteRule(scenario.id, rule.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="rule-content"><strong>SI</strong><div class="conditions">${rule.conditions.map((cond, i) => this._renderCondition(scenario, rule, cond, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter condition" @click=${() => this._addCondition(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div><strong>ALORS</strong><div class="actions">${rule.actions.map((act, i) => this._renderAction(scenario, rule, act, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter action" @click=${() => this._addAction(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div></div></div>`; }
-    
+    _renderRule(scenario, rule) { return html`<div class="rule-card"><div class="rule-header"><span>Règle</span><ha-icon-button class="delete-btn-panel" label="Supprimer Règle" @click=${() => this._deleteRule(scenario.id, rule.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="rule-content"><strong>SI</strong><div class="conditions">${rule.conditions.map((cond, i) => this._renderCondition(scenario, rule, cond, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter condition" @click=${() => this._addCondition(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div><strong>ALORS</strong><div class="actions">${rule.actions.map((act, i) => this._renderAction(scenario, rule, act, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter action" @click=${() => this._showAddActionDialog(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div></div></div>`; }
+
     _getValueInputForEntity(entity, currentValue, updateCallback) {
       const entityState = this.hass.states[entity];
       if (!entityState) {
@@ -247,10 +296,70 @@ function defineCard(LitElement, html, css) {
       </div>`;
     }
 
+    _renderAddActionDialog() {
+      if (!this._addingActionDialog) return '';
+
+      const entities = Object.keys(this.hass.states).sort();
+
+      return html`
+        <div class="dialog-overlay" @click=${() => this._closeAddActionDialog()}>
+          <div class="dialog-container" @click=${e => e.stopPropagation()}>
+            <div class="dialog-header">
+              <h3>Ajouter une action</h3>
+              <ha-icon-button @click=${() => this._closeAddActionDialog()}>
+                <ha-icon icon="hass:close"></ha-icon>
+              </ha-icon-button>
+            </div>
+            <div class="dialog-content">
+              <label class="dialog-label">Entité</label>
+              <select class="dialog-select" .value=${this._addingActionDialog.entity} @change=${e => {
+                this._addingActionDialog.entity = e.target.value;
+                this.requestUpdate();
+              }}>
+                <option value="">-- Choisir une entité --</option>
+                ${entities.map(entity => html`
+                  <option .value=${entity}>
+                    ${this.hass.states[entity].attributes.friendly_name || entity}
+                  </option>
+                `)}
+              </select>
+
+              ${this._addingActionDialog.entity ? html`
+                <label class="dialog-label">Type d'action</label>
+                <div class="action-type-buttons">
+                  <button
+                    class="action-type-btn ${this._addingActionDialog.actionType === 'call_service' ? 'active' : ''}"
+                    @click=${() => {
+                      this._addingActionDialog.actionType = 'call_service';
+                      this.requestUpdate();
+                    }}>
+                    Appel de service
+                  </button>
+                  <button
+                    class="action-type-btn ${this._addingActionDialog.actionType === 'set_state' ? 'active' : ''}"
+                    @click=${() => {
+                      this._addingActionDialog.actionType = 'set_state';
+                      this.requestUpdate();
+                    }}>
+                    Définir l'état
+                  </button>
+                </div>
+              ` : ''}
+            </div>
+            <div class="dialog-actions">
+              <ha-button @click=${() => this._closeAddActionDialog()}>Annuler</ha-button>
+              <ha-button variant="primary" @click=${() => this._confirmAddAction()}>Ajouter</ha-button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     static get styles() {
       return css`
         :host{display:block}ha-card{overflow:hidden;position:relative}.header{display:flex;align-items:center;gap:16px;background:var(--primary-color);color:var(--text-primary-color,#fff);padding:16px}.icon-container ha-icon{--mdc-icon-size:28px}.card-name{font-size:22px;font-weight:700}.card-description{font-size:14px;opacity:.9}.tab-bar{display:flex;border-bottom:1px solid var(--divider-color)}.tab{padding:12px 16px;cursor:pointer;font-weight:500;color:var(--secondary-text-color);position:relative}.tab.active{color:var(--primary-color)}.tab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--primary-color)}.content{padding:16px}.timeline-header{display:flex;align-items:center;margin-bottom:8px;padding-right:10px}.day-label-spacer{width:80px;flex-shrink:0}.hours-container{flex-grow:1;position:relative;height:1em;font-size:12px;color:var(--secondary-text-color)}.days-container{display:flex;flex-direction:column;gap:12px}.day-row{display:flex;align-items:center;gap:8px}.day-label{width:80px;flex-shrink:0;font-weight:500;text-align:right;padding-right:8px}.timeline-bar{flex-grow:1;position:relative;height:48px;background-color:var(--secondary-background-color);border-radius:8px;border:1px solid var(--divider-color);cursor:crosshair}.grid-line{position:absolute;top:0;bottom:0;width:1px;background-color:var(--divider-color)}.time-slot{position:absolute;top:4px;bottom:4px;border-radius:6px;cursor:move;display:flex;align-items:center;justify-content:space-between;overflow:hidden;transition:opacity .2s}.time-slot.dragging{opacity:.7;z-index:10;box-shadow:0 4px 8px #0003}.time-slot.preview{background-color:#3b82f680;border:1px dashed var(--primary-color);z-index:1;cursor:default}.slot-content{padding:0 8px;color:#fff;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:flex;justify-content:space-between;align-items:center;pointer-events:none}.delete-btn{--mdc-icon-button-size:24px;--mdc-icon-size:16px;color:#fff;opacity:.7;transition:opacity .2s;pointer-events:auto}.delete-btn:hover{opacity:1}.resize-handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:5}.resize-handle.left{left:0}.resize-handle.right{right:0}.edit-panel{margin-top:16px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:16px}.edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.edit-header h3{margin:0;font-size:16px;flex-grow:1}.header-buttons{display:flex;align-items:center}.delete-btn-panel{--mdc-theme-primary:var(--error-color)}.edit-content{display:grid;grid-template-columns:1fr 1fr;gap:12px}ha-select{grid-column:1 / -1}.resize-tooltip{position:fixed;transform:translate(-50%,-120%);background-color:var(--primary-text-color,#000);color:var(--text-primary-color,#fff);padding:4px 8px;border-radius:4px;font-size:14px;font-weight:700;z-index:1000;pointer-events:none}
         .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.rule-card{background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;margin-top:12px}.rule-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background-color:var(--primary-background-color);border-bottom:1px solid var(--divider-color);font-weight:700}.rule-content{padding:12px;display:flex;flex-direction:column;gap:8px}.conditions,.actions{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--divider-color);margin-left:8px;padding-top:8px}.add-icon-button-wrapper{margin-top:8px}.condition-row,.action-row{display:flex;align-items:center;gap:8px}.condition-row > .entity-select, .action-row > .entity-select {flex:1}.condition-row > .operator-select{flex:none;width:80px;}.condition-row > .value-input, .action-row > .value-input {flex:1} select, ha-textfield { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--input-fill-color); color: var(--primary-text-color); font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box; height: 40px; }
+        .dialog-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background-color:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}.dialog-container{background-color:var(--primary-background-color);border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,.3);width:90%;max-width:500px;max-height:90vh;overflow-y:auto}.dialog-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--divider-color)}.dialog-header h3{margin:0;font-size:18px;font-weight:600}.dialog-content{padding:16px;display:flex;flex-direction:column;gap:16px}.dialog-label{font-weight:500;margin-bottom:8px;color:var(--primary-text-color)}.dialog-select{width:100%;padding:8px;border-radius:4px;border:1px solid var(--divider-color);background:var(--input-fill-color);color:var(--primary-text-color);font-family:inherit;font-size:inherit;box-sizing:border-box;height:40px}.action-type-buttons{display:flex;gap:8px;flex-wrap:wrap}.action-type-btn{flex:1;min-width:150px;padding:10px 16px;border:2px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:4px;cursor:pointer;font-size:inherit;font-weight:500;transition:all .2s ease}.action-type-btn:hover{background:var(--primary-background-color);border-color:var(--primary-color)}.action-type-btn.active{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color)}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--divider-color)}.dialog-actions ha-button{margin:0}
       `;
     }
   }
