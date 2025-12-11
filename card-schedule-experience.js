@@ -22,6 +22,8 @@ function defineCard(LitElement, html, css) {
       this._previewSlot = null;
       this._resizeTooltip = null;
       this._automationColors = {}; // Stocke les couleurs des automations
+      this._loading = true; // Indicateur de chargement
+      this._scheduleId = 'default';
 
       this._timeslots = [];
     }
@@ -35,31 +37,51 @@ function defineCard(LitElement, html, css) {
     getCardSize() { return 15; }
 
     async _saveSchedule() {
-      if (!this.hass) return;
+      if (!this.hass) {
+        console.error('Hass not available');
+        return;
+      }
       try {
-        await this.hass.callService('card_schedule_experience', 'save_schedule', {
+        const data = {
           schedule_id: this._scheduleId,
           timeslots: this._timeslots,
           automation_colors: this._automationColors,
-        });
+        };
+        console.log('Saving schedule:', data);
+        await this.hass.callService('card_schedule_experience', 'save_schedule', data);
+        console.log('Schedule saved successfully');
       } catch (error) {
         console.error('Error saving schedule:', error);
+        alert('Erreur lors de la sauvegarde : ' + error.message);
       }
     }
 
     async _loadSchedule() {
-      if (!this.hass) return;
+      if (!this.hass) {
+        setTimeout(() => this._loadSchedule(), 1000);
+        return;
+      }
+
       try {
+        this._loading = true;
+        this.requestUpdate();
+
+        console.log('Loading schedule for:', this._scheduleId);
         const response = await this.hass.callService('card_schedule_experience', 'get_schedule', {
           schedule_id: this._scheduleId,
         });
+
+        console.log('Schedule loaded response:', response);
         if (response) {
           this._timeslots = response.timeslots || [];
           this._automationColors = response.automation_colors || {};
-          this.requestUpdate();
+          console.log('Timeslots loaded:', this._timeslots);
         }
       } catch (error) {
         console.error('Error loading schedule:', error);
+      } finally {
+        this._loading = false;
+        this.requestUpdate();
       }
     }
 

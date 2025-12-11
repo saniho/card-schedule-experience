@@ -4,6 +4,7 @@ from typing import Any
 from datetime import datetime
 import os
 import yaml
+import json
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -25,15 +26,20 @@ PLATFORMS = []
 
 # ID de l'automation créée automatiquement
 TRIGGER_AUTOMATION_ID = "card_schedule_experience_trigger"
+STORAGE_FILE = ".storage/card_schedule_experience_schedules.json"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Card Schedule Experience component."""
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["schedules"] = {}
+    hass.data[DOMAIN]["hass"] = hass
 
     # Créer l'automation de déclenchement
     await _setup_trigger_automation(hass)
+
+    # Charger les schedules depuis le fichier de stockage
+    await _load_schedules_from_file(hass)
 
     async def save_schedule_service(call: ServiceCall) -> None:
         """Handle save schedule service call."""
@@ -45,6 +51,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             "timeslots": timeslots,
             "automation_colors": automation_colors,
         }
+
+        # Sauvegarder dans le fichier
+        await _save_schedules_to_file(hass)
 
         _LOGGER.debug(f"Schedule {schedule_id} saved with {len(timeslots)} timeslots")
 
@@ -155,6 +164,43 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def _load_schedules_from_file(hass: HomeAssistant) -> None:
+    """Load schedules from storage file."""
+    try:
+        storage_path = hass.config.path(STORAGE_FILE)
+
+        # Créer le dossier .storage s'il n'existe pas
+        storage_dir = os.path.dirname(storage_path)
+        os.makedirs(storage_dir, exist_ok=True)
+
+        if os.path.exists(storage_path):
+            with open(storage_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                hass.data[DOMAIN]["schedules"] = data
+                _LOGGER.info(f"Loaded {len(data)} schedules from file")
+        else:
+            _LOGGER.debug("No existing schedules file found, starting with empty schedules")
+    except Exception as e:
+        _LOGGER.error(f"Error loading schedules from file: {e}")
+
+
+async def _save_schedules_to_file(hass: HomeAssistant) -> None:
+    """Save schedules to storage file."""
+    try:
+        storage_path = hass.config.path(STORAGE_FILE)
+
+        # Créer le dossier s'il n'existe pas
+        storage_dir = os.path.dirname(storage_path)
+        os.makedirs(storage_dir, exist_ok=True)
+
+        with open(storage_path, 'w', encoding='utf-8') as f:
+            json.dump(hass.data[DOMAIN]["schedules"], f, indent=2, ensure_ascii=False)
+
+        _LOGGER.debug(f"Schedules saved to file: {storage_path}")
+    except Exception as e:
+        _LOGGER.error(f"Error saving schedules to file: {e}")
+
+
 async def _setup_trigger_automation(hass: HomeAssistant) -> None:
     """Create or update the trigger automation."""
     try:
@@ -209,7 +255,4 @@ async def _setup_trigger_automation(hass: HomeAssistant) -> None:
 
     except Exception as e:
         _LOGGER.error(f"Error setting up trigger automation: {e}")
-
-
-
 
