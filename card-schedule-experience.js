@@ -28,16 +28,14 @@ function defineCard(LitElement, html, css) {
       this._editingScenarioId = null;
       this._addingActionDialog = null;
 
-      this.operators = [ { value: '<', label: '<' }, { value: '<=', label: '≤' }, { value: '=', label: '=' }, { value: '>=', label: '≥' }, { value: '>', label: '>' } ];
-      
       this._timeslots = [
         { id: '1', name: 'Chauffage matin', day: 1, startTime: '07:00', endTime: '09:00', scenarioId: '1', enabled: true, color: '#3b82f6' },
         { id: '2', name: 'Eco journée', day: 1, startTime: '09:01', endTime: '17:59', scenarioId: '2', enabled: true, color: '#10b981' },
         { id: '3', name: 'Chauffage soir', day: 1, startTime: '18:00', endTime: '23:00', scenarioId: '1', enabled: true, color: '#3b82f6' }
       ];
       this._scenarios = [
-        { id: '1', name: 'Chauffage confort', color: '#3b82f6', rules: [ { id: 'r1', conditions: [{ entity: 'sensor.temperature_exterieure', operator: '<', value: 10 }], actions: [{ entity: 'climate.salon', value: '21' }] } ] },
-        { id: '2', name: 'Mode éco', color: '#10b981', rules: [] }
+        { id: '1', name: 'Chauffage confort', color: '#3b82f6', automations: [] },
+        { id: '2', name: 'Mode éco', color: '#10b981', automations: [] }
       ];
     }
 
@@ -53,19 +51,13 @@ function defineCard(LitElement, html, css) {
     deleteTimeslot(id) { this._timeslots = this._timeslots.filter(s => s.id !== id); if (this._editingSlot === id) this._editingSlot = null; this.requestUpdate(); }
 
     _updateScenario(id, updates) { this._scenarios = this._scenarios.map(s => s.id === id ? { ...s, ...updates } : s); this.requestUpdate(); }
-    _addScenario() { const newScenario = { id: Date.now().toString(), name: 'Nouveau Scénario', color: '#cccccc', rules: [] }; this._scenarios = [...this._scenarios, newScenario]; this._editingScenarioId = newScenario.id; this.requestUpdate(); }
+    _addScenario() { const newScenario = { id: Date.now().toString(), name: 'Nouveau Scénario', color: '#cccccc', automations: [] }; this._scenarios = [...this._scenarios, newScenario]; this._editingScenarioId = newScenario.id; this.requestUpdate(); }
     _deleteScenario(id) { if (confirm('Supprimer ce scénario ?')) { this._scenarios = this._scenarios.filter(s => s.id !== id); if (this._editingScenarioId === id) this._editingScenarioId = null; this.requestUpdate(); } }
-    _addRule(scenarioId) { const rule = { id: `r${Date.now()}`, conditions: [], actions: [] }; this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: [...s.rules, rule] } : s); this.requestUpdate(); }
-    _deleteRule(scenarioId, ruleId) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.filter(r => r.id !== ruleId) } : s); this.requestUpdate(); }
-    _addCondition(scenarioId, ruleId) { const cond = { entity: '', operator: '=', value: '' }; this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, conditions: [...r.conditions, cond] } : r) } : s); this.requestUpdate(); }
-    _deleteCondition(scenarioId, ruleId, index) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, conditions: r.conditions.filter((_, i) => i !== index) } : r) } : s); this.requestUpdate(); }
-    _updateCondition(scenarioId, ruleId, index, updates) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, conditions: r.conditions.map((c, i) => i === index ? { ...c, ...updates } : c) } : r) } : s); this.requestUpdate(); }
-    _addAction(scenarioId, ruleId) { const action = { entity: '', value: '' }; this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, actions: [...r.actions, action] } : r) } : s); this.requestUpdate(); }
-    _deleteAction(scenarioId, ruleId, index) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, actions: r.actions.filter((_, i) => i !== index) } : r) } : s); this.requestUpdate(); }
-    _updateAction(scenarioId, ruleId, index, updates) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, rules: s.rules.map(r => r.id === ruleId ? { ...r, actions: r.actions.map((a, i) => i === index ? { ...a, ...updates } : a) } : a) } : s); this.requestUpdate(); }
+    _addAutomationToScenario(scenarioId, automationId) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, automations: [...s.automations, automationId] } : s); this.requestUpdate(); }
+    _removeAutomationFromScenario(scenarioId, automationId) { this._scenarios = this._scenarios.map(s => s.id === scenarioId ? { ...s, automations: s.automations.filter(id => id !== automationId) } : s); this.requestUpdate(); }
 
     _showAddActionDialog(scenarioId, ruleId) {
-      this._addingActionDialog = { scenarioId, ruleId, entity: '', actionType: 'call_service' };
+      this._addingActionDialog = { scenarioId, ruleId: null, entity: '' };
       this.requestUpdate();
     }
 
@@ -80,19 +72,8 @@ function defineCard(LitElement, html, css) {
         return;
       }
 
-      const { scenarioId, ruleId, entity } = this._addingActionDialog;
-
-      // Créer l'action avec l'automation (entity contient l'ID de l'automation)
-      const action = { entity, value: 'trigger' };
-
-      this._addAction(scenarioId, ruleId);
-
-      // Mettre à jour la dernière action avec les bonnes valeurs
-      const scenario = this._scenarios.find(s => s.id === scenarioId);
-      const rule = scenario.rules.find(r => r.id === ruleId);
-      const lastActionIndex = rule.actions.length - 1;
-      this._updateAction(scenarioId, ruleId, lastActionIndex, action);
-
+      const { scenarioId, entity } = this._addingActionDialog;
+      this._addAutomationToScenario(scenarioId, entity);
       this._closeAddActionDialog();
     }
 
@@ -130,146 +111,10 @@ function defineCard(LitElement, html, css) {
     
     _renderScenarios() { return html`<div class="scenarios-list">${this._scenarios.map(s => this._renderScenarioItem(s))}</div><div class="add-button-container"><ha-button outlined label="Ajouter un scénario" @click=${this._addScenario}><ha-icon slot="icon" icon="hass:plus"></ha-icon></ha-button></div>`; }
     _renderScenarioItem(scenario) { const isEditing = this._editingScenarioId === scenario.id; return html`<ha-card class="scenario-item" outlined> <div class="scenario-header" @click=${() => this._editingScenarioId = isEditing ? null : scenario.id}> <div class="scenario-color" style="background-color: ${scenario.color}"></div> <span class="scenario-name">${scenario.name}</span> <ha-icon-button .label=${isEditing ? 'Fermer' : 'Ouvrir'}><ha-icon icon=${isEditing ? 'hass:chevron-up' : 'hass:chevron-down'}></ha-icon></ha-icon-button> </div> ${isEditing ? this._renderScenarioEditor(scenario) : ''} </ha-card>`; }
-    _renderScenarioEditor(scenario) { return html`<div class="scenario-editor">${this._renderScenarioDetails(scenario)}${scenario.rules.map(rule => this._renderRule(scenario, rule))}<div class="add-button-container"><ha-button outlined label="Ajouter une règle" @click=${() => this._addRule(scenario.id)}><ha-icon slot="icon" icon="hass:plus-circle-outline"></ha-icon></ha-button></div></div>`; }
+    _renderScenarioEditor(scenario) { return html`<div class="scenario-editor">${this._renderScenarioDetails(scenario)}${this._renderScenarioAutomations(scenario)}<div class="add-button-container"><ha-button outlined label="Ajouter une automation" @click=${() => this._showAddActionDialog(scenario.id)}><ha-icon slot="icon" icon="hass:plus-circle-outline"></ha-icon></ha-button></div></div>`; }
     _renderScenarioDetails(scenario) { return html`<div class="scenario-details"><ha-textfield label="Nom du scénario" .value=${scenario.name} @change=${e => this._updateScenario(scenario.id, { name: e.target.value })}></ha-textfield><div class="color-picker"><span>Couleur</span><input type="color" .value=${scenario.color} @input=${e => this._updateScenario(scenario.id, { color: e.target.value })} /></div><ha-icon-button class="delete-btn-panel" label="Supprimer Scénario" @click=${() => this._deleteScenario(scenario.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div>`; }
-    _renderRule(scenario, rule) { return html`<div class="rule-card"><div class="rule-header"><span>Règle</span><ha-icon-button class="delete-btn-panel" label="Supprimer Règle" @click=${() => this._deleteRule(scenario.id, rule.id)}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="rule-content"><strong>SI</strong><div class="conditions">${rule.conditions.map((cond, i) => this._renderCondition(scenario, rule, cond, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter condition" @click=${() => this._addCondition(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div><strong>ALORS</strong><div class="actions">${rule.actions.map((act, i) => this._renderAction(scenario, rule, act, i))}<div class="add-icon-button-wrapper"><ha-icon-button class="add-icon-button" label="Ajouter action" @click=${() => this._showAddActionDialog(scenario.id, rule.id)}><ha-icon icon="hass:plus"></ha-icon></ha-icon-button></div></div></div></div>`; }
 
-    _getValueInputForEntity(entity, currentValue, updateCallback) {
-      const entityState = this.hass.states[entity];
-      if (!entityState) {
-        return html`<ha-textfield class="value-input" label="Valeur" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-      }
-
-      const domain = entity.split('.')[0];
-      const state = entityState.state;
-      const attributes = entityState.attributes || {};
-
-      // input_select - dropdown avec options
-      if (domain === 'input_select') {
-        const options = attributes.options || [];
-        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-          <option value="">-- Choisir une valeur --</option>
-          ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
-        </select>`;
-      }
-
-      // select - nouvelle entité native Home Assistant avec options
-      if (domain === 'select') {
-        const options = attributes.options || [];
-        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-          <option value="">-- Choisir une valeur --</option>
-          ${options.map(opt => html`<option .value=${opt}>${opt}</option>`)}
-        </select>`;
-      }
-
-      // input_boolean - booléen vrai/faux
-      if (domain === 'input_boolean') {
-        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-          <option value="">-- Choisir --</option>
-          <option value="on">Allumé</option>
-          <option value="off">Éteint</option>
-        </select>`;
-      }
-
-      // switch - on/off
-      if (domain === 'switch') {
-        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-          <option value="">-- Choisir --</option>
-          <option value="on">Allumer</option>
-          <option value="off">Éteindre</option>
-        </select>`;
-      }
-
-      // light - on/off
-      if (domain === 'light') {
-        return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-          <option value="">-- Choisir --</option>
-          <option value="on">Allumer</option>
-          <option value="off">Éteindre</option>
-        </select>`;
-      }
-
-      // climate - hvac_modes pour choisir le mode
-      if (domain === 'climate') {
-        const hvacModes = attributes.hvac_modes || [];
-        // Si on a les modes HVAC, afficher un dropdown
-        if (hvacModes.length > 0) {
-          return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-            <option value="">-- Choisir un mode --</option>
-            ${hvacModes.map(mode => html`<option .value=${mode}>${mode}</option>`)}
-          </select>`;
-        }
-        // Sinon champ numérique pour la température
-        const minTemp = attributes.min_temp;
-        const maxTemp = attributes.max_temp;
-        const unit = attributes.unit_of_measurement || '°C';
-        return html`<ha-textfield class="value-input" label="Température ${unit}" type="number" .value=${currentValue} .min=${minTemp} .max=${maxTemp} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-      }
-
-      // fan - fan_modes si disponible
-      if (domain === 'fan') {
-        const fanModes = attributes.fan_modes || [];
-        if (fanModes.length > 0) {
-          return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-            <option value="">-- Choisir un mode --</option>
-            ${fanModes.map(mode => html`<option .value=${mode}>${mode}</option>`)}
-          </select>`;
-        }
-      }
-
-      // cover - position (0-100)
-      if (domain === 'cover') {
-        return html`<ha-textfield class="value-input" label="Position (%)" type="number" .value=${currentValue} min="0" max="100" @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-      }
-
-      // number - numérique avec min/max/step
-      if (domain === 'number') {
-        const min = attributes.min;
-        const max = attributes.max;
-        const step = attributes.step || 1;
-        const unit = attributes.unit_of_measurement ? ` ${attributes.unit_of_measurement}` : '';
-        return html`<ha-textfield class="value-input" label="Valeur${unit}" type="number" .value=${currentValue} step="${step}" min="${min}" max="${max}" @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-      }
-
-      // sensor - déterminer le type basé sur l'état et les attributs
-      if (domain === 'sensor') {
-        // Vérifier si c'est un nombre
-        const isNumeric = !isNaN(state) && state !== '' && state !== 'unknown' && state !== 'unavailable';
-        if (isNumeric) {
-          const unit = attributes.unit_of_measurement ? ` ${attributes.unit_of_measurement}` : '';
-          return html`<ha-textfield class="value-input" label="Valeur${unit}" type="number" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-        }
-        // Vérifier si c'est un booléen (on/off, true/false)
-        if (state === 'on' || state === 'off' || state === 'true' || state === 'false') {
-          return html`<select class="value-input" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}>
-            <option value="">-- Choisir --</option>
-            <option value="on">Allumé</option>
-            <option value="off">Éteint</option>
-          </select>`;
-        }
-        // Sinon texte
-        return html`<ha-textfield class="value-input" label="Valeur" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-      }
-
-      // Fallback: champ texte
-      return html`<ha-textfield class="value-input" label="Valeur" .value=${currentValue} @change=${e => updateCallback({ value: e.target.value })}></ha-textfield>`;
-    }
-
-    _renderCondition(scenario, rule, cond, index) {
-      const entities = Object.keys(this.hass.states).sort();
-
-      return html`<div class="condition-row">
-        <select class="entity-select" .value=${cond.entity} @change=${e => { this._updateCondition(scenario.id, rule.id, index, { entity: e.target.value, value: '' }); setTimeout(() => this.requestUpdate(), 0); }}>
-          <option value="" disabled selected>Choisir une entité</option>
-          ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
-        </select>
-        <select class="operator-select" .value=${cond.operator} @change=${e => this._updateCondition(scenario.id, rule.id, index, { operator: e.target.value })}>${this.operators.map(o => html`<option .value=${o.value}>${o.label}</option>`)}</select>
-        ${cond.entity ? this._getValueInputForEntity(cond.entity, cond.value, (updates) => this._updateCondition(scenario.id, rule.id, index, updates)) : html`<input class="value-input" disabled placeholder="Sélectionnez une entité d'abord" />`}
-        <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteCondition(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
-      </div>`;
-    }
-
-    _renderAction(scenario, rule, act, index) {
+    _renderScenarioAutomations(scenario) {
       const automations = Object.keys(this.hass.states)
         .filter(entity => entity.startsWith('automation.'))
         .map(entity => ({
@@ -278,13 +123,29 @@ function defineCard(LitElement, html, css) {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      const selectedAutomation = automations.find(auto => auto.id === act.entity);
-      const automationName = selectedAutomation ? selectedAutomation.name : 'Automation supprimée';
+      const scenarioAutomations = scenario.automations
+        .map(autoId => automations.find(a => a.id === autoId))
+        .filter(a => a); // Supprimer les automations supprimées
 
-      return html`<div class="action-row">
-        <div class="automation-display">${automationName}</div>
-        <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteAction(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
-      </div>`;
+      return html`
+        <div class="automations-section">
+          <h3>Automations associées</h3>
+          ${scenarioAutomations.length === 0 ? html`
+            <div class="no-automations-info">Aucune automation sélectionnée</div>
+          ` : ''}
+          <div class="automations-list">
+            ${scenarioAutomations.map(auto => html`
+              <div class="automation-item">
+                <ha-icon icon="hass:robot"></ha-icon>
+                <span class="automation-name">${auto.name}</span>
+                <ha-icon-button class="delete-btn-panel" @click=${() => this._removeAutomationFromScenario(scenario.id, auto.id)}>
+                  <ha-icon icon="hass:trash-can-outline"></ha-icon>
+                </ha-icon-button>
+              </div>
+            `)}
+          </div>
+        </div>
+      `;
     }
 
     _renderAddActionDialog() {
@@ -340,8 +201,8 @@ function defineCard(LitElement, html, css) {
     static get styles() {
       return css`
         :host{display:block}ha-card{overflow:hidden;position:relative}.header{display:flex;align-items:center;gap:16px;background:var(--primary-color);color:var(--text-primary-color,#fff);padding:16px}.icon-container ha-icon{--mdc-icon-size:28px}.card-name{font-size:22px;font-weight:700}.card-description{font-size:14px;opacity:.9}.tab-bar{display:flex;border-bottom:1px solid var(--divider-color)}.tab{padding:12px 16px;cursor:pointer;font-weight:500;color:var(--secondary-text-color);position:relative}.tab.active{color:var(--primary-color)}.tab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--primary-color)}.content{padding:16px}.timeline-header{display:flex;align-items:center;margin-bottom:8px;padding-right:10px}.day-label-spacer{width:80px;flex-shrink:0}.hours-container{flex-grow:1;position:relative;height:1em;font-size:12px;color:var(--secondary-text-color)}.days-container{display:flex;flex-direction:column;gap:12px}.day-row{display:flex;align-items:center;gap:8px}.day-label{width:80px;flex-shrink:0;font-weight:500;text-align:right;padding-right:8px}.timeline-bar{flex-grow:1;position:relative;height:48px;background-color:var(--secondary-background-color);border-radius:8px;border:1px solid var(--divider-color);cursor:crosshair}.grid-line{position:absolute;top:0;bottom:0;width:1px;background-color:var(--divider-color)}.time-slot{position:absolute;top:4px;bottom:4px;border-radius:6px;cursor:move;display:flex;align-items:center;justify-content:space-between;overflow:hidden;transition:opacity .2s}.time-slot.dragging{opacity:.7;z-index:10;box-shadow:0 4px 8px #0003}.time-slot.preview{background-color:#3b82f680;border:1px dashed var(--primary-color);z-index:1;cursor:default}.slot-content{padding:0 8px;color:#fff;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:flex;justify-content:space-between;align-items:center;pointer-events:none}.delete-btn{--mdc-icon-button-size:24px;--mdc-icon-size:16px;color:#fff;opacity:.7;transition:opacity .2s;pointer-events:auto}.delete-btn:hover{opacity:1}.resize-handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:5}.resize-handle.left{left:0}.resize-handle.right{right:0}.edit-panel{margin-top:16px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:16px}.edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.edit-header h3{margin:0;font-size:16px;flex-grow:1}.header-buttons{display:flex;align-items:center}.delete-btn-panel{--mdc-theme-primary:var(--error-color)}.edit-content{display:grid;grid-template-columns:1fr 1fr;gap:12px}ha-select{grid-column:1 / -1}.resize-tooltip{position:fixed;transform:translate(-50%,-120%);background-color:var(--primary-text-color,#000);color:var(--text-primary-color,#fff);padding:4px 8px;border-radius:4px;font-size:14px;font-weight:700;z-index:1000;pointer-events:none}
-        .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.rule-card{background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;margin-top:12px}.rule-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background-color:var(--primary-background-color);border-bottom:1px solid var(--divider-color);font-weight:700}.rule-content{padding:12px;display:flex;flex-direction:column;gap:8px}.conditions,.actions{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--divider-color);margin-left:8px;padding-top:8px}.add-icon-button-wrapper{margin-top:8px}.condition-row,.action-row{display:flex;align-items:center;gap:8px}.condition-row > .entity-select, .action-row > .entity-select {flex:1}.condition-row > .operator-select{flex:none;width:80px;}.condition-row > .value-input, .action-row > .value-input {flex:1}.automation-display{flex:1;padding:8px;background-color:var(--input-fill-color);border:1px solid var(--divider-color);border-radius:4px;color:var(--primary-text-color);font-size:14px;height:40px;display:flex;align-items:center} select, ha-textfield { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--input-fill-color); color: var(--primary-text-color); font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box; height: 40px; }
-        .dialog-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background-color:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}.dialog-container{background-color:var(--primary-background-color);border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,.3);width:90%;max-width:500px;max-height:90vh;overflow-y:auto}.dialog-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--divider-color)}.dialog-header h3{margin:0;font-size:18px;font-weight:600}.dialog-content{padding:16px;display:flex;flex-direction:column;gap:16px}.dialog-label{font-weight:500;margin-bottom:8px;color:var(--primary-text-color)}.dialog-select{width:100%;padding:8px;border-radius:4px;border:1px solid var(--divider-color);background:var(--input-fill-color);color:var(--primary-text-color);font-family:inherit;font-size:inherit;box-sizing:border-box;height:40px}.no-automations-message{padding:12px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:4px;color:var(--primary-text-color);font-size:14px;text-align:center}.action-type-buttons{display:flex;gap:8px;flex-wrap:wrap}.action-type-btn{flex:1;min-width:150px;padding:10px 16px;border:2px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:4px;cursor:pointer;font-size:inherit;font-weight:500;transition:all .2s ease}.action-type-btn:hover{background:var(--primary-background-color);border-color:var(--primary-color)}.action-type-btn.active{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color)}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--divider-color)}.dialog-actions ha-button{margin:0}
+        .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.automations-section{margin-top:16px;padding:12px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px}.automations-section h3{margin:0 0 12px 0;font-size:14px;font-weight:600}.no-automations-info{padding:8px;color:var(--secondary-text-color);font-size:13px;text-align:center;font-style:italic}.automations-list{display:flex;flex-direction:column;gap:8px}.automation-item{display:flex;align-items:center;gap:12px;padding:10px;background-color:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:4px}.automation-item ha-icon{color:var(--primary-color);flex-shrink:0}.automation-name{flex-grow:1;font-weight:500;color:var(--primary-text-color)} select, ha-textfield { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--input-fill-color); color: var(--primary-text-color); font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box; height: 40px; }
+        .dialog-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background-color:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}.dialog-container{background-color:var(--primary-background-color);border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,.3);width:90%;max-width:500px;max-height:90vh;overflow-y:auto}.dialog-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--divider-color)}.dialog-header h3{margin:0;font-size:18px;font-weight:600}.dialog-content{padding:16px;display:flex;flex-direction:column;gap:16px}.dialog-label{font-weight:500;margin-bottom:8px;color:var(--primary-text-color)}.dialog-select{width:100%;padding:8px;border-radius:4px;border:1px solid var(--divider-color);background:var(--input-fill-color);color:var(--primary-text-color);font-family:inherit;font-size:inherit;box-sizing:border-box;height:40px}.no-automations-message{padding:12px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:4px;color:var(--primary-text-color);font-size:14px;text-align:center}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--divider-color)}.dialog-actions ha-button{margin:0}
       `;
     }
   }
