@@ -23,11 +23,7 @@ function defineCard(LitElement, html, css) {
       this._resizeTooltip = null;
       this._automationColors = {}; // Stocke les couleurs des automations
 
-      this._timeslots = [
-        { id: '1', name: 'Chauffage matin', day: 1, startTime: '07:00', endTime: '09:00', automationId: '', enabled: true, color: '#3b82f6' },
-        { id: '2', name: 'Eco journée', day: 1, startTime: '09:01', endTime: '17:59', automationId: '', enabled: true, color: '#10b981' },
-        { id: '3', name: 'Chauffage soir', day: 1, startTime: '18:00', endTime: '23:00', automationId: '', enabled: true, color: '#3b82f6' }
-      ];
+      this._timeslots = [];
     }
 
     setConfig(config) { this._config = config; }
@@ -42,7 +38,8 @@ function defineCard(LitElement, html, css) {
     deleteTimeslot(id) { this._timeslots = this._timeslots.filter(s => s.id !== id); if (this._editingSlot === id) this._editingSlot = null; this.requestUpdate(); }
 
     setAutomationColor(automationId, color) {
-      this._automationColors[automationId] = color;
+      // Sauvegarder la couleur dans _automationColors
+      this._automationColors = { ...this._automationColors, [automationId]: color };
       // Mettre à jour la couleur de toutes les plages utilisant cette automation
       this._timeslots = this._timeslots.map(slot =>
         slot.automationId === automationId ? { ...slot, color } : slot
@@ -58,6 +55,13 @@ function defineCard(LitElement, html, css) {
       const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
       const colorIndex = Object.keys(this._automationColors).length % colors.length;
       return colors[colorIndex];
+    }
+
+    getAutomationName(automationId) {
+      if (!automationId || !this.hass) return '';
+      const state = this.hass.states[automationId];
+      if (!state) return automationId;
+      return state.attributes.friendly_name || automationId;
     }
 
 
@@ -85,7 +89,7 @@ function defineCard(LitElement, html, css) {
       `;
     }
 
-    _renderTimeslots(days) { const slots = (d) => this._timeslots.filter(s => s.day === d).sort((a, b) => a.startTime.localeCompare(b.startTime)); return html`<div class="timeline-header"><div class="day-label-spacer"></div><div class="hours-container">${[0,6,12,18,24].map(h=>html`<span style="position:absolute;left:${(h/24)*100}%;transform:translateX(${h>0&&h<24?'-50%':h===24?'-100%':'0'});">${String(h===24?'24':h).padStart(2,'0')}:00</span>`)}</div></div><div class="days-container">${days.map(d=>html`<div class="day-row"><div class="day-label">${d.l}</div><div class="timeline-bar" @mousedown=${(e)=>this._handleTimelineMouseDown(e,d.id)}>${[6,12,18].map(h=>html`<div class="grid-line" style="left:${h/24*100}%"></div>`)}${slots(d.id).map(s=>html`<div class="time-slot ${this._draggedSlot?.id===s.id?'dragging':''}" style="left:${this.timeToPercent(s.startTime)}%;width:${this.timeToPercent(s.endTime)-this.timeToPercent(s.startTime)}%;background-color:${s.color};" @mousedown=${(e)=>this._handleDragStart(e,s)} @click=${()=>{if(!this._draggedSlot)this._editingSlot=s.id}}><div class="resize-handle left" @mousedown=${(e)=>this._handleResizeStart(e,s,'left')}></div><div class="slot-content"><span class="slot-name">${s.name}</span><ha-icon-button class="delete-btn" .label="Supprimer" @click=${(e)=>{e.stopPropagation();this.deleteTimeslot(s.id)}}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="resize-handle right" @mousedown=${(e)=>this._handleResizeStart(e,s,'right')}></div></div>`)}${this._previewSlot&&this._previewSlot.day===d.id?html`<div class="time-slot preview" style="left:${this.timeToPercent(this._previewSlot.startTime)}%;width:${this.timeToPercent(this._previewSlot.endTime)-this.timeToPercent(this._previewSlot.startTime)}%;"></div>`:''}</div></div>`)}</div>${this._editingSlot?this._renderEditPanel():''}`; }
+    _renderTimeslots(days) { const slots = (d) => this._timeslots.filter(s => s.day === d).sort((a, b) => a.startTime.localeCompare(b.startTime)); return html`<div class="timeline-header"><div class="day-label-spacer"></div><div class="hours-container">${[0,6,12,18,24].map(h=>html`<span style="position:absolute;left:${(h/24)*100}%;transform:translateX(${h>0&&h<24?'-50%':h===24?'-100%':'0'});">${String(h===24?'24':h).padStart(2,'0')}:00</span>`)}</div></div><div class="days-container">${days.map(d=>html`<div class="day-row"><div class="day-label">${d.l}</div><div class="timeline-bar" @mousedown=${(e)=>this._handleTimelineMouseDown(e,d.id)}>${[6,12,18].map(h=>html`<div class="grid-line" style="left:${h/24*100}%"></div>`)}${slots(d.id).map(s=>html`<div class="time-slot ${this._draggedSlot?.id===s.id?'dragging':''}" style="left:${this.timeToPercent(s.startTime)}%;width:${this.timeToPercent(s.endTime)-this.timeToPercent(s.startTime)}%;background-color:${s.color};" @mousedown=${(e)=>this._handleDragStart(e,s)} @click=${()=>{if(!this._draggedSlot)this._editingSlot=s.id}}><div class="resize-handle left" @mousedown=${(e)=>this._handleResizeStart(e,s,'left')}></div><div class="slot-content"><span class="slot-name">${s.automationId ? this.getAutomationName(s.automationId) : s.name}</span><ha-icon-button class="delete-btn" .label="Supprimer" @click=${(e)=>{e.stopPropagation();this.deleteTimeslot(s.id)}}><ha-icon icon="hass:trash-can-outline"></ha-icon></ha-icon-button></div><div class="resize-handle right" @mousedown=${(e)=>this._handleResizeStart(e,s,'right')}></div></div>`)}${this._previewSlot&&this._previewSlot.day===d.id?html`<div class="time-slot preview" style="left:${this.timeToPercent(this._previewSlot.startTime)}%;width:${this.timeToPercent(this._previewSlot.endTime)-this.timeToPercent(this._previewSlot.startTime)}%;"></div>`:''}</div></div>`)}</div>${this._editingSlot?this._renderEditPanel():''}`; }
     _renderEditPanel() {
       const s = this._timeslots.find(sl => sl.id === this._editingSlot);
       if (!s) return '';
@@ -128,6 +132,10 @@ function defineCard(LitElement, html, css) {
           <select .value=${s.automationId} @change=${(e)=>{
             const autoId = e.target.value;
             const newColor = autoId ? (this._automationColors[autoId] || this.getAutomationColor(autoId)) : '#3b82f6';
+            // Sauvegarder la couleur assignée à l'automation
+            if (autoId && !this._automationColors[autoId]) {
+              this._automationColors = { ...this._automationColors, [autoId]: newColor };
+            }
             this.updateTimeslot(s.id, { automationId: autoId, color: newColor });
           }}>
             <option value="">-- Aucune --</option>
