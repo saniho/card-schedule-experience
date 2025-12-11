@@ -76,28 +76,14 @@ function defineCard(LitElement, html, css) {
 
     _confirmAddAction() {
       if (!this._addingActionDialog || !this._addingActionDialog.entity) {
-        alert('Veuillez sélectionner une entité');
+        alert('Veuillez sélectionner une automation');
         return;
       }
 
-      const { scenarioId, ruleId, entity, actionType } = this._addingActionDialog;
-      const entityState = this.hass.states[entity];
-      const domain = entity.split('.')[0];
+      const { scenarioId, ruleId, entity } = this._addingActionDialog;
 
-      // Créer l'action avec une valeur par défaut selon le type d'entité
-      let action = { entity, value: '' };
-
-      if (domain === 'input_select' || domain === 'select') {
-        action.value = entityState.attributes.options?.[0] || '';
-      } else if (domain === 'input_boolean' || domain === 'switch' || domain === 'light') {
-        action.value = 'on';
-      } else if (domain === 'number') {
-        action.value = entityState.attributes.min || '0';
-      } else if (domain === 'climate') {
-        action.value = entityState.attributes.min_temp || '20';
-      } else if (domain === 'cover') {
-        action.value = '50';
-      }
+      // Créer l'action avec l'automation (entity contient l'ID de l'automation)
+      const action = { entity, value: 'trigger' };
 
       this._addAction(scenarioId, ruleId);
 
@@ -284,14 +270,19 @@ function defineCard(LitElement, html, css) {
     }
 
     _renderAction(scenario, rule, act, index) {
-      const entities = Object.keys(this.hass.states).sort();
+      const automations = Object.keys(this.hass.states)
+        .filter(entity => entity.startsWith('automation.'))
+        .map(entity => ({
+          id: entity,
+          name: this.hass.states[entity].attributes.friendly_name || entity
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const selectedAutomation = automations.find(auto => auto.id === act.entity);
+      const automationName = selectedAutomation ? selectedAutomation.name : 'Automation supprimée';
 
       return html`<div class="action-row">
-        <select class="entity-select" .value=${act.entity} @change=${e => { this._updateAction(scenario.id, rule.id, index, { entity: e.target.value, value: '' }); setTimeout(() => this.requestUpdate(), 0); }}>
-          <option value="" disabled selected>Choisir une entité</option>
-          ${entities.map(entity => html`<option .value=${entity}>${this.hass.states[entity].attributes.friendly_name || entity}</option>`)}
-        </select>
-        ${act.entity ? this._getValueInputForEntity(act.entity, act.value, (updates) => this._updateAction(scenario.id, rule.id, index, updates)) : html`<input class="value-input" disabled placeholder="Sélectionnez une entité d'abord" />`}
+        <div class="automation-display">${automationName}</div>
         <ha-icon-button class="delete-btn-panel" @click=${() => this._deleteAction(scenario.id, rule.id, index)}><ha-icon icon="hass:close"></ha-icon></ha-icon-button>
       </div>`;
     }
@@ -299,50 +290,41 @@ function defineCard(LitElement, html, css) {
     _renderAddActionDialog() {
       if (!this._addingActionDialog) return '';
 
-      const entities = Object.keys(this.hass.states).sort();
+      // Récupérer les automations disponibles
+      const automations = Object.keys(this.hass.states)
+        .filter(entity => entity.startsWith('automation.'))
+        .map(entity => ({
+          id: entity,
+          name: this.hass.states[entity].attributes.friendly_name || entity
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
 
       return html`
         <div class="dialog-overlay" @click=${() => this._closeAddActionDialog()}>
           <div class="dialog-container" @click=${e => e.stopPropagation()}>
             <div class="dialog-header">
-              <h3>Ajouter une action</h3>
+              <h3>Ajouter une automation</h3>
               <ha-icon-button @click=${() => this._closeAddActionDialog()}>
                 <ha-icon icon="hass:close"></ha-icon>
               </ha-icon-button>
             </div>
             <div class="dialog-content">
-              <label class="dialog-label">Entité</label>
+              <label class="dialog-label">Sélectionner une automation</label>
               <select class="dialog-select" .value=${this._addingActionDialog.entity} @change=${e => {
                 this._addingActionDialog.entity = e.target.value;
                 this.requestUpdate();
               }}>
-                <option value="">-- Choisir une entité --</option>
-                ${entities.map(entity => html`
-                  <option .value=${entity}>
-                    ${this.hass.states[entity].attributes.friendly_name || entity}
+                <option value="">-- Choisir une automation --</option>
+                ${automations.map(auto => html`
+                  <option .value=${auto.id}>
+                    ${auto.name}
                   </option>
                 `)}
               </select>
 
-              ${this._addingActionDialog.entity ? html`
-                <label class="dialog-label">Type d'action</label>
-                <div class="action-type-buttons">
-                  <button
-                    class="action-type-btn ${this._addingActionDialog.actionType === 'call_service' ? 'active' : ''}"
-                    @click=${() => {
-                      this._addingActionDialog.actionType = 'call_service';
-                      this.requestUpdate();
-                    }}>
-                    Appel de service
-                  </button>
-                  <button
-                    class="action-type-btn ${this._addingActionDialog.actionType === 'set_state' ? 'active' : ''}"
-                    @click=${() => {
-                      this._addingActionDialog.actionType = 'set_state';
-                      this.requestUpdate();
-                    }}>
-                    Définir l'état
-                  </button>
+              ${automations.length === 0 ? html`
+                <div class="no-automations-message">
+                  ⚠️ Aucune automation trouvée. Créez-en une d'abord dans Home Assistant.
                 </div>
               ` : ''}
             </div>
@@ -358,8 +340,8 @@ function defineCard(LitElement, html, css) {
     static get styles() {
       return css`
         :host{display:block}ha-card{overflow:hidden;position:relative}.header{display:flex;align-items:center;gap:16px;background:var(--primary-color);color:var(--text-primary-color,#fff);padding:16px}.icon-container ha-icon{--mdc-icon-size:28px}.card-name{font-size:22px;font-weight:700}.card-description{font-size:14px;opacity:.9}.tab-bar{display:flex;border-bottom:1px solid var(--divider-color)}.tab{padding:12px 16px;cursor:pointer;font-weight:500;color:var(--secondary-text-color);position:relative}.tab.active{color:var(--primary-color)}.tab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:var(--primary-color)}.content{padding:16px}.timeline-header{display:flex;align-items:center;margin-bottom:8px;padding-right:10px}.day-label-spacer{width:80px;flex-shrink:0}.hours-container{flex-grow:1;position:relative;height:1em;font-size:12px;color:var(--secondary-text-color)}.days-container{display:flex;flex-direction:column;gap:12px}.day-row{display:flex;align-items:center;gap:8px}.day-label{width:80px;flex-shrink:0;font-weight:500;text-align:right;padding-right:8px}.timeline-bar{flex-grow:1;position:relative;height:48px;background-color:var(--secondary-background-color);border-radius:8px;border:1px solid var(--divider-color);cursor:crosshair}.grid-line{position:absolute;top:0;bottom:0;width:1px;background-color:var(--divider-color)}.time-slot{position:absolute;top:4px;bottom:4px;border-radius:6px;cursor:move;display:flex;align-items:center;justify-content:space-between;overflow:hidden;transition:opacity .2s}.time-slot.dragging{opacity:.7;z-index:10;box-shadow:0 4px 8px #0003}.time-slot.preview{background-color:#3b82f680;border:1px dashed var(--primary-color);z-index:1;cursor:default}.slot-content{padding:0 8px;color:#fff;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:flex;justify-content:space-between;align-items:center;pointer-events:none}.delete-btn{--mdc-icon-button-size:24px;--mdc-icon-size:16px;color:#fff;opacity:.7;transition:opacity .2s;pointer-events:auto}.delete-btn:hover{opacity:1}.resize-handle{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:5}.resize-handle.left{left:0}.resize-handle.right{right:0}.edit-panel{margin-top:16px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:16px}.edit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.edit-header h3{margin:0;font-size:16px;flex-grow:1}.header-buttons{display:flex;align-items:center}.delete-btn-panel{--mdc-theme-primary:var(--error-color)}.edit-content{display:grid;grid-template-columns:1fr 1fr;gap:12px}ha-select{grid-column:1 / -1}.resize-tooltip{position:fixed;transform:translate(-50%,-120%);background-color:var(--primary-text-color,#000);color:var(--text-primary-color,#fff);padding:4px 8px;border-radius:4px;font-size:14px;font-weight:700;z-index:1000;pointer-events:none}
-        .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.rule-card{background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;margin-top:12px}.rule-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background-color:var(--primary-background-color);border-bottom:1px solid var(--divider-color);font-weight:700}.rule-content{padding:12px;display:flex;flex-direction:column;gap:8px}.conditions,.actions{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--divider-color);margin-left:8px;padding-top:8px}.add-icon-button-wrapper{margin-top:8px}.condition-row,.action-row{display:flex;align-items:center;gap:8px}.condition-row > .entity-select, .action-row > .entity-select {flex:1}.condition-row > .operator-select{flex:none;width:80px;}.condition-row > .value-input, .action-row > .value-input {flex:1} select, ha-textfield { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--input-fill-color); color: var(--primary-text-color); font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box; height: 40px; }
-        .dialog-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background-color:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}.dialog-container{background-color:var(--primary-background-color);border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,.3);width:90%;max-width:500px;max-height:90vh;overflow-y:auto}.dialog-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--divider-color)}.dialog-header h3{margin:0;font-size:18px;font-weight:600}.dialog-content{padding:16px;display:flex;flex-direction:column;gap:16px}.dialog-label{font-weight:500;margin-bottom:8px;color:var(--primary-text-color)}.dialog-select{width:100%;padding:8px;border-radius:4px;border:1px solid var(--divider-color);background:var(--input-fill-color);color:var(--primary-text-color);font-family:inherit;font-size:inherit;box-sizing:border-box;height:40px}.action-type-buttons{display:flex;gap:8px;flex-wrap:wrap}.action-type-btn{flex:1;min-width:150px;padding:10px 16px;border:2px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:4px;cursor:pointer;font-size:inherit;font-weight:500;transition:all .2s ease}.action-type-btn:hover{background:var(--primary-background-color);border-color:var(--primary-color)}.action-type-btn.active{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color)}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--divider-color)}.dialog-actions ha-button{margin:0}
+        .scenarios-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}.add-button-container{margin-top:16px;text-align:center}.scenario-item{transition:all .3s ease-in-out}.scenario-header{display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer}.scenario-color{width:24px;height:24px;border-radius:50%;border:2px solid var(--divider-color)}.scenario-name{flex-grow:1;font-weight:500}.scenario-editor{padding:0 16px 16px;border-top:1px solid var(--divider-color)}.scenario-details{display:flex;align-items:center;gap:16px;margin-bottom:16px;padding-top:16px}.color-picker{display:flex;align-items:center;gap:8px}.color-picker input{width:32px;height:32px;padding:0;border:none;background:0 0;cursor:pointer}.rule-card{background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:8px;margin-top:12px}.rule-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background-color:var(--primary-background-color);border-bottom:1px solid var(--divider-color);font-weight:700}.rule-content{padding:12px;display:flex;flex-direction:column;gap:8px}.conditions,.actions{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--divider-color);margin-left:8px;padding-top:8px}.add-icon-button-wrapper{margin-top:8px}.condition-row,.action-row{display:flex;align-items:center;gap:8px}.condition-row > .entity-select, .action-row > .entity-select {flex:1}.condition-row > .operator-select{flex:none;width:80px;}.condition-row > .value-input, .action-row > .value-input {flex:1}.automation-display{flex:1;padding:8px;background-color:var(--input-fill-color);border:1px solid var(--divider-color);border-radius:4px;color:var(--primary-text-color);font-size:14px;height:40px;display:flex;align-items:center} select, ha-textfield { padding: 8px; border-radius: 4px; border: 1px solid var(--divider-color); background: var(--input-fill-color); color: var(--primary-text-color); font-family: inherit; font-size: inherit; width: 100%; box-sizing: border-box; height: 40px; }
+        .dialog-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background-color:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}.dialog-container{background-color:var(--primary-background-color);border-radius:8px;box-shadow:0 5px 15px rgba(0,0,0,.3);width:90%;max-width:500px;max-height:90vh;overflow-y:auto}.dialog-header{display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--divider-color)}.dialog-header h3{margin:0;font-size:18px;font-weight:600}.dialog-content{padding:16px;display:flex;flex-direction:column;gap:16px}.dialog-label{font-weight:500;margin-bottom:8px;color:var(--primary-text-color)}.dialog-select{width:100%;padding:8px;border-radius:4px;border:1px solid var(--divider-color);background:var(--input-fill-color);color:var(--primary-text-color);font-family:inherit;font-size:inherit;box-sizing:border-box;height:40px}.no-automations-message{padding:12px;background-color:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:4px;color:var(--primary-text-color);font-size:14px;text-align:center}.action-type-buttons{display:flex;gap:8px;flex-wrap:wrap}.action-type-btn{flex:1;min-width:150px;padding:10px 16px;border:2px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:4px;cursor:pointer;font-size:inherit;font-weight:500;transition:all .2s ease}.action-type-btn:hover{background:var(--primary-background-color);border-color:var(--primary-color)}.action-type-btn.active{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:var(--primary-color)}.dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:16px;border-top:1px solid var(--divider-color)}.dialog-actions ha-button{margin:0}
       `;
     }
   }
