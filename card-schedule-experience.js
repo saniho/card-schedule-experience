@@ -26,16 +26,50 @@ function defineCard(LitElement, html, css) {
       this._timeslots = [];
     }
 
-    setConfig(config) { this._config = config; }
+    setConfig(config) {
+      this._config = config;
+      this._scheduleId = config.schedule_id || 'default';
+      this._loadSchedule();
+    }
+
     getCardSize() { return 15; }
+
+    async _saveSchedule() {
+      if (!this.hass) return;
+      try {
+        await this.hass.callService('card_schedule_experience', 'save_schedule', {
+          schedule_id: this._scheduleId,
+          timeslots: this._timeslots,
+          automation_colors: this._automationColors,
+        });
+      } catch (error) {
+        console.error('Error saving schedule:', error);
+      }
+    }
+
+    async _loadSchedule() {
+      if (!this.hass) return;
+      try {
+        const response = await this.hass.callService('card_schedule_experience', 'get_schedule', {
+          schedule_id: this._scheduleId,
+        });
+        if (response) {
+          this._timeslots = response.timeslots || [];
+          this._automationColors = response.automation_colors || {};
+          this.requestUpdate();
+        }
+      } catch (error) {
+        console.error('Error loading schedule:', error);
+      }
+    }
 
     timeToMinutes(time) { const [h, m] = time.split(':').map(Number); return h * 60 + m; }
     timeToPercent(time) { return (this.timeToMinutes(time) / 1440) * 100; }
     percentToTime(p) { const tm = Math.round((p / 100) * 1440), h = Math.floor(tm / 60), m = Math.round((tm % 60) / 5) * 5; return `${String(h % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }
     checkConflict(target) { if (this.timeToMinutes(target.startTime) >= this.timeToMinutes(target.endTime)) return { name: "Durée nulle" }; for (const s of this._timeslots.filter(s => s.day === target.day && s.id !== target.id)) { if (this.timeToMinutes(target.startTime) < this.timeToMinutes(s.endTime) && this.timeToMinutes(target.endTime) > this.timeToMinutes(s.startTime)) return s; } return null; }
-    addTimeslot(day, startTime, endTime) { const newSlot = { id: Date.now().toString(), name: 'Nouveau', day, startTime, endTime, automationId: '', enabled: true, color: '#3b82f6' }; this._timeslots = [...this._timeslots, newSlot]; this._editingSlot = newSlot.id; this.requestUpdate(); }
-    updateTimeslot(id, u) { this._timeslots = this._timeslots.map(s => s.id === id ? { ...s, ...u } : s); this.requestUpdate(); }
-    deleteTimeslot(id) { this._timeslots = this._timeslots.filter(s => s.id !== id); if (this._editingSlot === id) this._editingSlot = null; this.requestUpdate(); }
+    addTimeslot(day, startTime, endTime) { const newSlot = { id: Date.now().toString(), name: 'Nouveau', day, startTime, endTime, automationId: '', enabled: true, color: '#3b82f6' }; this._timeslots = [...this._timeslots, newSlot]; this._editingSlot = newSlot.id; this._saveSchedule(); this.requestUpdate(); }
+    updateTimeslot(id, u) { this._timeslots = this._timeslots.map(s => s.id === id ? { ...s, ...u } : s); this._saveSchedule(); this.requestUpdate(); }
+    deleteTimeslot(id) { this._timeslots = this._timeslots.filter(s => s.id !== id); if (this._editingSlot === id) this._editingSlot = null; this._saveSchedule(); this.requestUpdate(); }
 
     setAutomationColor(automationId, color) {
       // Sauvegarder la couleur dans _automationColors
@@ -44,6 +78,7 @@ function defineCard(LitElement, html, css) {
       this._timeslots = this._timeslots.map(slot =>
         slot.automationId === automationId ? { ...slot, color } : slot
       );
+      this._saveSchedule();
       this.requestUpdate();
     }
 

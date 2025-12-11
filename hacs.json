@@ -2,6 +2,7 @@
   "name": "Card Schedule Experience",
   "render_readme": true,
   "filename": "card-schedule-experience.js",
-  "content_in_root": true,
+  "content_in_root": false,
   "homeassistant": "2023.1.0"
 }
+

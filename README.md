@@ -1,71 +1,135 @@
 # Card Schedule Experience
 
-Une carte Lovelace pour Home Assistant permettant de créer et de gérer des plannings visuels de manière intuitive. Idéal pour les thermostats, l'éclairage, l'arrosage, et plus encore.
+Une carte personnalisée pour Home Assistant qui permet de programmer des plages horaires et déclencher des automations selon un calendrier.
 
-![Aperçu de la carte](https://raw.githubusercontent.com/user/repo/main/screenshot.png)
-*(Pensez à remplacer cette image par une vraie capture d'écran de votre carte !)*
+## 🚀 Installation
 
-## Fonctionnalités
+### Via HACS
+1. Allez dans HACS → Frontend
+2. Recherchez "Card Schedule Experience"
+3. Installez et redémarrez
 
-- **Timeline visuelle** : Affiche les plages horaires pour chaque jour de la semaine sur une timeline de 24 heures.
-- **Glisser-déposer (Drag & Drop)** : Déplacez facilement une plage horaire pour changer son heure de début.
-- **Redimensionnement intuitif** : Étirez ou rétrécissez les plages horaires directement sur la timeline.
-- **Détection de conflits** : Empêche la création de plages horaires qui se chevauchent.
-- **Édition rapide** : Cliquez sur une plage pour ouvrir un panneau d'édition et ajuster précisément les heures ou le scénario associé.
-- **Gestion de scénarios** : Associez chaque plage horaire à un scénario (ex: "Chauffage Confort", "Mode Éco").
-- **Compatible HACS** : Installation et mises à jour faciles via le Home Assistant Community Store.
+### Manuel
+1. Créez le dossier `www/` dans votre dossier `config` s'il n'existe pas
+2. Copiez `card-schedule-experience.js` dans `www/`
+3. Ajoutez la ressource dans votre configuration Lovelace
+4. Installez le custom_component (voir ci-dessous)
 
-## Installation
+## 🔧 Installation du Custom Component
 
-### Avec HACS (Recommandé)
+1. Copiez le dossier `custom_components/card_schedule_experience/` dans votre dossier `config/custom_components/`
+2. Redémarrez Home Assistant
+3. Le composant sera automatiquement détecté
 
-1.  Assurez-vous d'avoir [HACS](https://hacs.xyz/) installé.
-2.  Allez dans votre interface Home Assistant.
-3.  Allez dans `HACS` > `Frontend`.
-4.  Cliquez sur les 3 points en haut à droite et sélectionnez `Custom repositories`.
-5.  Entrez l'URL de votre dépôt GitHub dans le champ `Repository`, sélectionnez `Lovelace` dans la catégorie, puis cliquez sur `ADD`.
-6.  La carte "Card Schedule Experience" devrait maintenant apparaître. Cliquez sur `INSTALL`.
-7.  HACS vous demandera d'ajouter la ressource à votre configuration Lovelace, confirmez.
+## 📋 Configuration
 
-### Manuelle
-
-1.  Téléchargez le fichier `card-schedule-experience.js` depuis le dossier `dist/` de la [dernière release](https://github.com/VOTRE_USER/VOTRE_REPO/releases).
-2.  Placez ce fichier dans le dossier `www` de votre configuration Home Assistant (créez-le s'il n'existe pas). Par exemple, `/config/www/card-schedule-experience/`.
-3.  Ajoutez la ressource à votre configuration Lovelace :
-    - Allez dans `Paramètres` > `Tableaux de bord`.
-    - Cliquez sur les 3 points en haut à droite et sélectionnez `Ressources`.
-    - Cliquez sur `AJOUTER UNE RESSOURCE`.
-    - Entrez l'URL : `/local/card-schedule-experience/card-schedule-experience.js` (ou le chemin où vous avez placé le fichier).
-    - Choisissez `Module JavaScript` comme type de ressource.
-
-## Configuration
-
-Une fois la carte installée, vous pouvez l'ajouter à votre tableau de bord Lovelace.
-
-1.  Ouvrez un tableau de bord et cliquez sur `Modifier le tableau de bord`.
-2.  Cliquez sur `AJOUTER UNE CARTE`.
-3.  Cherchez la carte `custom:card-schedule-experience` ou choisissez la carte `Manuelle`.
-4.  Entrez la configuration suivante :
+### Configuration Lovelace minimale :
 
 ```yaml
 type: custom:card-schedule-experience
-# Pour le moment, aucune configuration supplémentaire n'est requise.
-# La carte utilise des données d'exemple internes.
+schedule_id: default
 ```
 
-## Roadmap
+### Avec un ID personnalisé :
 
-Ce projet est en cours de développement. Voici les prochaines étapes prévues :
+```yaml
+type: custom:card-schedule-experience
+schedule_id: my_schedule
+```
 
-- [ ] **Sauvegarde des données** : Permettre de sauvegarder et charger la configuration (plages horaires et scénarios) depuis une entité Home Assistant (ex: `input_text`).
-- [ ] **Implémentation complète des scénarios** : Construire l'interface pour créer, modifier et supprimer des scénarios complexes (conditions et actions).
-- [ ] **Internationalisation (i18n)** : Traduire l'interface dans plusieurs langues.
-- [ ] **Plus d'options de personnalisation** : Permettre de configurer les couleurs, les labels, etc.
+## 💾 Comment ça marche
 
-## Contribution
+### Sauvegarde et chargement automatiques
 
-Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue pour signaler un bug ou proposer une nouvelle fonctionnalité.
+La configuration est automatiquement sauvegardée chaque fois que vous :
+- ✅ Créez une nouvelle plage horaire
+- ✅ Modifiez les heures de début/fin
+- ✅ Changez l'automation associée
+- ✅ Modifiez la couleur
+- ✅ Supprimez une plage
 
-## Licence
+Les données sont stockées dans Home Assistant via le service `card_schedule_experience.save_schedule`.
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` for plus de détails.
+### Services disponibles
+
+#### `card_schedule_experience.save_schedule`
+Sauvegarde une configuration de planning.
+
+**Paramètres :**
+- `schedule_id` (optionnel) : Identifiant du planning (défaut: "default")
+- `timeslots` : Liste des plages horaires
+- `automation_colors` : Couleurs assignées aux automations
+
+**Exemple :**
+```yaml
+service: card_schedule_experience.save_schedule
+data:
+  schedule_id: my_schedule
+  timeslots: []
+  automation_colors: {}
+```
+
+#### `card_schedule_experience.get_schedule`
+Récupère une configuration de planning.
+
+**Paramètres :**
+- `schedule_id` (optionnel) : Identifiant du planning (défaut: "default")
+
+## 🎨 Utilisation
+
+### Créer une plage horaire
+
+1. Cliquez et glissez-déposez sur la timeline pour créer une plage
+2. Cliquez sur la plage pour ouvrir l'éditeur
+3. Définissez les heures de début et fin
+4. Sélectionnez une automation
+5. Choisissez une couleur (optionnel)
+
+### Modifier une plage
+
+- **Déplacer** : Glissez-déposez la plage
+- **Redimensionner** : Utilisez les poignées gauche/droite
+- **Éditer** : Cliquez pour ouvrir l'éditeur
+
+### Changer la couleur d'une automation
+
+Quand vous changez la couleur d'une automation, **toutes les plages** utilisant cette automation changent de couleur automatiquement.
+
+## 📦 Structure du projet
+
+```
+card-schedule-experience/
+├── custom_components/
+│   └── card_schedule_experience/
+│       ├── __init__.py
+│       ├── config_flow.py
+│       ├── const.py
+│       └── manifest.json
+├── www/
+│   └── card-schedule-experience.js
+├── hacs.json
+└── README.md
+```
+
+## 🐛 Dépannage
+
+### Les données ne sont pas sauvegardées
+
+- Vérifiez que le custom_component est installé et activé
+- Allez dans Paramètres → Appareils et services → Intégrations
+- Vérifiez que "Card Schedule Experience" est listée
+
+### La card n'apparaît pas
+
+- Redémarrez Home Assistant après l'installation
+- Videz le cache du navigateur (Ctrl+F5)
+- Vérifiez que `card-schedule-experience.js` est dans le dossier `www/`
+
+## 📄 Licence
+
+MIT License
+
+## 🤝 Contribution
+
+Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou une pull request.
+

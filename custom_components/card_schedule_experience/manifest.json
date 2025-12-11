@@ -1,0 +1,11 @@
+{
+  "domain": "card_schedule_experience",
+  "name": "Card Schedule Experience",
+  "codeowners": ["@your_username"],
+  "config_flow": true,
+  "documentation": "https://github.com/your_repo/card-schedule-experience",
+  "requirements": [],
+  "version": "0.1.0",
+  "homeassistant": "2023.1.0"
+}
+
